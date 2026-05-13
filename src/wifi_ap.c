@@ -1,18 +1,11 @@
 /*
- * wifi_ap.c — CYW43439 access-point setup
- *
- * AP parameters (compile-time via -D):
- *   WIFI_SSID     = "PicoBridge"
- *   WIFI_PASSWORD = "picobridge123"
- *   WIFI_CHANNEL  = 6
- *
- * Subnet: 192.168.4.0/24, Pico gateway 192.168.4.1
- * DHCP:   hands out 192.168.4.2 – 192.168.4.9
+ * wifi_ap.c — CYW43439 access point + DHCP (fixed IP 192.168.4.10)
  */
 
 #include <stdio.h>
 #include "pico/cyw43_arch.h"
-#include "cyw43.h"              // cyw43_state, CYW43_ITF_AP
+#include "cyw43.h"
+#include "lwip/ip_addr.h"
 #include "lwip/ip4_addr.h"
 #include "dhcpserver.h"
 #include "wifi_ap.h"
@@ -26,15 +19,20 @@ void wifi_ap_init(void) {
         CYW43_AUTH_WPA2_AES_PSK
     );
 
-    ip4_addr_t gw, mask;
-    IP4_ADDR(&gw,   192, 168, 4, 1);
-    IP4_ADDR(&mask, 255, 255, 255, 0);
+    ip4_addr_t gw, mask, client_ip;
+    IP4_ADDR(&gw,        192, 168, 4,  1);
+    IP4_ADDR(&mask,      255, 255, 255, 0);
+    IP4_ADDR(&client_ip, 192, 168, 4,  10);   // fixed IP for WiFi clients
 
-    // Pass the WiFi AP netif so responses go out WiFi, not USB.
-    dhcp_server_init(&wifi_dhcp, &gw, &mask, &cyw43_state.netif[CYW43_ITF_AP]);
+    ip_addr_t gw_ia, mask_ia;
+    ip_addr_copy_from_ip4(gw_ia,   gw);
+    ip_addr_copy_from_ip4(mask_ia, mask);
 
-    printf("WiFi AP : SSID=%s  IP=192.168.4.1/24\n", WIFI_SSID);
-    printf("WiFi AP : channel %d, WPA2-AES-PSK\n", WIFI_CHANNEL);
+    struct netif *wifi_if = &cyw43_state.netif[CYW43_ITF_AP];
+    dhcp_server_init(&wifi_dhcp, &gw_ia, &mask_ia, &client_ip, wifi_if);
+
+    printf("WiFi AP: SSID=%s  Pico=192.168.4.1  Client=192.168.4.10 (DHCP fixed)\n",
+           WIFI_SSID);
 }
 
 void wifi_ap_deinit(void) {
@@ -43,6 +41,5 @@ void wifi_ap_deinit(void) {
 }
 
 struct netif *wifi_ap_get_netif(void) {
-    // The CYW43 driver registers the AP netif in cyw43_state.netif[CYW43_ITF_AP].
     return &cyw43_state.netif[CYW43_ITF_AP];
 }
