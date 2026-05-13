@@ -1,12 +1,12 @@
 #pragma once
 
 #include "lwip/ip_addr.h"
+#include "lwip/netif.h"
 
 // ---------------------------------------------------------------------------
 // Minimal DHCP server (UDP port 67 → 68)
-// Supports up to MAX_DHCP_LEASES simultaneous clients.
-// Two independent instances can run on separate netifs (USB + WiFi AP).
-// API based on pico-examples/picow_access_point.
+// Each instance is bound to a specific netif — critical for multi-netif setups
+// where broadcast responses must go out on the correct interface.
 // ---------------------------------------------------------------------------
 
 #define DHCP_MAX_LEASES     8
@@ -21,8 +21,11 @@ typedef struct dhcp_server_t_ {
     ip_addr_t       gw;
     ip_addr_t       mask;
     struct udp_pcb *udp;
+    struct netif   *netif;          // interface this server is bound to
     dhcp_lease_t    leases[DHCP_MAX_LEASES];
 } dhcp_server_t;
 
-void dhcp_server_init(dhcp_server_t *d, ip_addr_t *gw, ip_addr_t *mask);
+// netif: the interface to bind to (responses go out this interface only).
+void dhcp_server_init(dhcp_server_t *d, ip_addr_t *gw, ip_addr_t *mask,
+                      struct netif *netif);
 void dhcp_server_deinit(dhcp_server_t *d);

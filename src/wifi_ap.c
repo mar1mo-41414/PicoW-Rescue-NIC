@@ -30,7 +30,8 @@ void wifi_ap_init(void) {
     IP4_ADDR(&gw,   192, 168, 4, 1);
     IP4_ADDR(&mask, 255, 255, 255, 0);
 
-    dhcp_server_init(&wifi_dhcp, &gw, &mask);
+    // Pass the WiFi AP netif so responses go out WiFi, not USB.
+    dhcp_server_init(&wifi_dhcp, &gw, &mask, &cyw43_state.netif[CYW43_ITF_AP]);
 
     printf("WiFi AP : SSID=%s  IP=192.168.4.1/24\n", WIFI_SSID);
     printf("WiFi AP : channel %d, WPA2-AES-PSK\n", WIFI_CHANNEL);

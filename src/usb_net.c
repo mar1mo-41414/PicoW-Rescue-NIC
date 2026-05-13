@@ -104,10 +104,14 @@ void usb_net_init(void) {
     netif_add(&usb_netif, &ip, &mask, &gw,
               NULL, usb_netif_init, ethernet_input);
     netif_set_up(&usb_netif);
-    // Link state is set up when TinyUSB connects (tud_network_init_cb).
+    // Link state is set in tud_network_init_cb() when host activates NCM.
 
-    // DHCP server: hands out 10.0.0.2 – 10.0.0.9 to USB clients.
-    dhcp_server_init(&usb_dhcp, &gw, &mask);
+    // Set USB as default netif so lwIP routes outbound packets correctly
+    // when no explicit route exists (e.g. broadcast replies).
+    netif_set_default(&usb_netif);
+
+    // DHCP server bound to usb_netif — ensures responses go out USB, not WiFi.
+    dhcp_server_init(&usb_dhcp, &gw, &mask, &usb_netif);
 
     printf("USB net: 10.0.0.1/24 ready (DHCP active)\n");
 }
