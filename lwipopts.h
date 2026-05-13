@@ -34,10 +34,10 @@
 #define LWIP_DHCP                   1
 #define LWIP_DNS                    0   // not needed for bridge
 
-// --- IP forwarding + NAT ---
-#define IP_FORWARD                  1   // forward packets between netifs
-#define IP_NAPT                     1   // enable NAPT (requires ip4_napt.c)
-#define IP_NAPT_MAX                 64  // max simultaneous NAT sessions
+// --- IP forwarding ---
+// IP_FORWARD=1 lets lwIP route packets between USB and WiFi netifs.
+// NAPT is implemented in src/nat.c (ip4_napt.c absent from this SDK's lwIP).
+#define IP_FORWARD                  1
 
 // --- TCP tuning (small footprint) ---
 #define TCP_MSS                     1460
@@ -60,6 +60,14 @@
 
 // --- Checksum ---
 #define LWIP_CHKSUM_ALGORITHM       3
+
+// --- lwIP hook for custom NAPT (src/nat.c) ---
+// Declare the hook function here; implementation is in nat.c.
+// The hook is called for every incoming IPv4 packet.
+struct pbuf;
+struct netif;
+int nat_ip4_input_hook(struct pbuf *p, struct netif *inp);
+#define LWIP_HOOK_IP4_INPUT(p, inp)  nat_ip4_input_hook(p, inp)
 
 // --- Stats (disable in production to save RAM) ---
 #define LWIP_STATS                  0

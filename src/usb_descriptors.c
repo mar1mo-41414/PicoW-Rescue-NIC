@@ -89,7 +89,7 @@ uint8_t const desc_configuration[] = {
     TUD_CDC_NCM_DESCRIPTOR(ITF_NUM_NCM, STRIDX_NCM_NAME, STRIDX_NCM_MAC,
                            EPNUM_NCM_NOTIF, 64,
                            EPNUM_NCM_OUT, EPNUM_NCM_IN, 64,
-                           CFG_TUD_NET_MTU),
+                           1500),
 };
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.13)
 
+# PICO_BOARD must be set BEFORE include(pico_sdk_import.cmake) so that the
+# toolchain file picks up the correct board (pico_w has CYW43 / WiFi).
+if(NOT DEFINED PICO_BOARD)
+    set(PICO_BOARD pico_w CACHE STRING "Board type")
+endif()
+
 # Pull in Pico SDK (must be before project())
 include(pico_sdk_import.cmake)
 
@@ -16,6 +22,7 @@ add_executable(picow_nic
     src/wifi_ap.c
     src/network.c
     src/dhcpserver.c
+    src/nat.c          # self-contained NAPT (ip4_napt.c not in this SDK)
 )
 
 target_include_directories(picow_nic PRIVATE
@@ -30,23 +37,9 @@ target_compile_definitions(picow_nic PRIVATE
     PICO_STDIO_USB=0
 )
 
-# ---------------------------------------------------------------------------
-# lwIP NAPT (NAT Port Address Translation)
-# ip4_napt.c is NOT compiled by default in the bundled lwIP — add it manually.
-# ---------------------------------------------------------------------------
-if(DEFINED ENV{PICO_SDK_PATH})
-    set(_LWIP_NAPT "$ENV{PICO_SDK_PATH}/lib/lwip/src/core/ipv4/ip4_napt.c")
-    if(EXISTS "${_LWIP_NAPT}")
-        target_sources(picow_nic PRIVATE "${_LWIP_NAPT}")
-        message(STATUS "NAPT: found ${_LWIP_NAPT}")
-    else()
-        message(WARNING "ip4_napt.c not found — NAT disabled. Install pico-sdk >= 1.5")
-        target_compile_definitions(picow_nic PRIVATE NO_IP_NAPT=1)
-    endif()
-else()
-    message(WARNING "PICO_SDK_PATH not set — skipping NAPT check")
-    target_compile_definitions(picow_nic PRIVATE NO_IP_NAPT=1)
-endif()
+# ip4_napt.c is absent from the pico-sdk lwIP snapshot (added post-2.1.x).
+# We ship our own minimal NAPT in src/nat.c.
+message(STATUS "NAPT: using bundled src/nat.c")
 
 # ---------------------------------------------------------------------------
 # Libraries

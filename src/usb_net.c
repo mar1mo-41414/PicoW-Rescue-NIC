@@ -23,6 +23,7 @@
 #include "lwip/etharp.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip4_addr.h"
+#include "netif/ethernet.h"   // ethernet_input()
 
 #include "dhcpserver.h"
 #include "usb_net.h"
@@ -31,8 +32,9 @@
 // MAC address — Pico (device) side.
 // 02:xx = locally administered, unicast.
 // Must match the MAC string in usb_descriptors.c index 6 ("020284696000").
+// Declared as non-const by TinyUSB net_device.h (extern uint8_t[6]).
 // ---------------------------------------------------------------------------
-uint8_t const tud_network_mac_address[6] = {0x02, 0x02, 0x84, 0x69, 0x60, 0x00};
+uint8_t tud_network_mac_address[6] = {0x02, 0x02, 0x84, 0x69, 0x60, 0x00};
 
 static struct netif   usb_netif;
 static dhcp_server_t  usb_dhcp;
@@ -49,11 +51,12 @@ static err_t usb_netif_linkoutput(struct netif *netif, struct pbuf *p) {
 
     // Spin until TinyUSB has room for a new packet.
     // In a cooperative loop this is safe; the loop is short (< 1 frame time).
+    // tud_network_xmit() returns void — just check can_xmit first.
     for (int retries = 0; retries < 200; retries++) {
         if (!tud_ready())
             return ERR_USE;
         if (tud_network_can_xmit(p->tot_len)) {
-            tud_network_xmit(p, 0);
+            tud_network_xmit(p, 0);   // void — no return value to check
             return ERR_OK;
         }
         // Pump TinyUSB to finish transmitting the previous frame.
@@ -78,7 +81,7 @@ uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
 static err_t usb_netif_init(struct netif *netif) {
     netif->linkoutput = usb_netif_linkoutput;
     netif->output     = etharp_output;
-    netif->mtu        = CFG_TUD_NET_MTU;
+    netif->mtu        = 1500;   // standard Ethernet MTU
     netif->hwaddr_len = ETH_HWADDR_LEN;
     netif->flags      = NETIF_FLAG_BROADCAST |
                         NETIF_FLAG_ETHARP    |
@@ -116,7 +119,7 @@ struct netif *usb_net_get_netif(void) {
 // ---------------------------------------------------------------------------
 // TinyUSB RX callback  (USB host → Pico → lwIP)
 // ---------------------------------------------------------------------------
-void tud_network_recv_cb(const uint8_t *src, uint16_t size) {
+bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
     if (netif_is_up(&usb_netif)) {
         struct pbuf *p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
         if (p) {
@@ -128,6 +131,7 @@ void tud_network_recv_cb(const uint8_t *src, uint16_t size) {
     }
     // Re-arm the NCM receiver for the next frame.
     tud_network_recv_renew();
+    return true;
 }
 
 // Called when the USB host activates the NCM data interface.
