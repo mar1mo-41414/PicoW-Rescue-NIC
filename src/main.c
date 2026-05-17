@@ -25,6 +25,8 @@
 #include "usb_net.h"
 #include "network.h"
 
+void stdio_cdc_init(void);   // src/stdio_cdc.c
+
 static void status_task(void) {
     static uint32_t next_ms = 0;
     uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -34,9 +36,25 @@ static void status_task(void) {
 }
 
 int main(void) {
-    // UART debug on GP0/GP1.  USB is used for CDC-NCM — do NOT use stdio USB.
+    // UART on GP0/GP1 as fallback (useful if you have a serial adapter).
     stdio_init_all();
-    sleep_ms(100);
+
+    // TinyUSB device stack — must be up before we can use CDC-ACM.
+    tusb_init();
+
+    // Register the CDC stdio driver so printf → /dev/ttyACM*
+    stdio_cdc_init();
+
+    // Pump USB until CDC host opens the port (or 5 s timeout).
+    // This ensures the boot banner is visible on /dev/ttyACM*.
+    {
+        uint32_t deadline = to_ms_since_boot(get_absolute_time()) + 5000;
+        while (!tud_cdc_connected() &&
+               to_ms_since_boot(get_absolute_time()) < deadline) {
+            tud_task();
+            sleep_ms(1);
+        }
+    }
 
     printf("\n================================================\n");
     printf(" PicoW-NIC  USB-WiFi Bridge\n");
@@ -50,10 +68,6 @@ int main(void) {
         printf("FATAL: cyw43_arch_init failed\n");
         for (;;) tight_loop_contents();
     }
-
-    // TinyUSB device stack (uses RP2040 USB hardware).
-    // MUST be inited before tud_task() is called.
-    tusb_init();
 
     // WiFi AP: 192.168.4.1/24
     wifi_ap_init();

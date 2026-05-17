@@ -36,6 +36,7 @@
 #define OPT_SUBNET_MASK     1
 #define OPT_ROUTER          3
 #define OPT_DNS             6
+#define OPT_CLASSLESS_ROUTE 121   // RFC 3442: classless static route
 #define OPT_LEASE_TIME      51
 #define OPT_MSG_TYPE        53
 #define OPT_SERVER_ID       54
@@ -67,6 +68,9 @@ static int ro_u8(const uint8_t *o, uint16_t len, uint8_t c) {
 
 static void send_reply(dhcp_server_t *d, struct udp_pcb *pcb,
                        const dhcp_msg_t *req, uint8_t type) {
+#if VERBOSE_LOG
+    printf("DHCP send_reply: type=%u netif=%s\r\n", type, d->netif ? d->netif->name : "?");
+#endif
     dhcp_msg_t rep;
     memset(&rep, 0, sizeof rep);
     rep.op=DHCP_OP_REPLY; rep.htype=DHCP_HTYPE_ETH; rep.hlen=DHCP_HLEN_ETH;
@@ -90,6 +94,26 @@ static void send_reply(dhcp_server_t *d, struct udp_pcb *pcb,
     n += wo_u32(o+n, OPT_SUBNET_MASK, mask_he);
     n += wo_u32(o+n, OPT_ROUTER,      gw_he);
     n += wo_u32(o+n, OPT_DNS,         gw_he);
+
+    // Option 121 (Classless Static Route, RFC 3442).
+    // Format per route: prefix_len (1 byte), significant network octets, gateway (4 bytes).
+    // Only include if a route was configured (route_prefix_len > 0).
+    if (d->route_prefix_len > 0) {
+        uint8_t sig = (d->route_prefix_len + 7u) / 8u;   // significant octets
+        uint8_t route_len = (uint8_t)(1u + sig + 4u);
+        o[n++] = OPT_CLASSLESS_ROUTE;
+        o[n++] = route_len;
+        o[n++] = d->route_prefix_len;
+        // ip4_addr1..4 return individual octets in dotted-decimal order (A.B.C.D).
+        uint8_t net_octets[4] = {
+            ip4_addr1(&d->route_net), ip4_addr2(&d->route_net),
+            ip4_addr3(&d->route_net), ip4_addr4(&d->route_net)
+        };
+        for (uint8_t i = 0; i < sig; i++) o[n++] = net_octets[i];
+        o[n++] = ip4_addr1(&d->route_gw); o[n++] = ip4_addr2(&d->route_gw);
+        o[n++] = ip4_addr3(&d->route_gw); o[n++] = ip4_addr4(&d->route_gw);
+    }
+
     o[n++] = OPT_END;
 
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, sizeof rep, PBUF_RAM);
@@ -106,15 +130,24 @@ static void dhcp_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                       const ip_addr_t *addr, u16_t port) {
     (void)addr; (void)port;
     dhcp_server_t *d = (dhcp_server_t *)arg;
+#if VERBOSE_LOG
+    printf("DHCP recv cb: netif=%s p=%p\r\n", d->netif ? d->netif->name : "?", (void*)p);
+#endif
     if (!p) return;
 
     dhcp_msg_t msg;
     uint16_t copied = pbuf_copy_partial(p, &msg, sizeof msg, 0);
     pbuf_free(p);
+#if VERBOSE_LOG
+    printf("DHCP recv: copied=%u op=%u\r\n", copied, msg.op);
+#endif
     if (copied < 240 || msg.op != DHCP_OP_REQUEST) return;
 
     uint16_t olen = (uint16_t)(copied - (uint16_t)offsetof(dhcp_msg_t, options));
     int type = ro_u8(msg.options, olen, OPT_MSG_TYPE);
+#if VERBOSE_LOG
+    printf("DHCP recv: type=%d\r\n", type);
+#endif
 
     const uint8_t *mac = msg.chaddr;
     char ip_str[16];
@@ -145,7 +178,15 @@ void dhcp_server_init(dhcp_server_t *d,
     d->udp = udp_new();
     if (!d->udp) { printf("DHCP: udp_new failed\n"); return; }
     udp_recv(d->udp, dhcp_recv, d);
-    udp_bind(d->udp, IP_ADDR_ANY, DHCP_PORT_SERVER);
+    // SO_REUSEADDR lets two DHCP servers share port 67 (one per netif).
+    // Without it, the second udp_bind() returns ERR_USE and the PCB is never
+    // added to udp_pcbs, so its callback is never called.
+    ip_set_option(d->udp, SOF_REUSEADDR);
+    err_t err = udp_bind(d->udp, IP_ADDR_ANY, DHCP_PORT_SERVER);
+    if (err != ERR_OK) {
+        printf("DHCP: udp_bind failed err=%d\r\n", err);
+        udp_remove(d->udp); d->udp = NULL; return;
+    }
     udp_bind_netif(d->udp, netif);   // restrict to this interface only
 
     printf("DHCP ready on %s: fixed IP = %s\n",

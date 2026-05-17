@@ -56,9 +56,10 @@ typedef struct {
 static nat_entry_t nat_table[NAT_TABLE_SIZE];
 static uint16_t    next_port = 49152u;   // ephemeral port range start
 
-// WiFi AP IP (masquerade address) — filled in nat_init()
-static uint32_t wifi_ip_n = 0;    // network-byte-order
-static uint32_t usb_net_n = 0;    // 10.0.0.0 network, network-byte-order
+// Masquerade addresses — filled in nat_init()
+static uint32_t wifi_ip_n  = 0;   // 192.168.4.1 in network-byte-order
+static uint32_t usb_ip_n   = 0;   // 10.0.0.1   in network-byte-order
+static uint32_t usb_net_n  = 0;   // 10.0.0.0 network
 static uint32_t usb_mask_n = 0;
 
 // ---------------------------------------------------------------------------
@@ -209,13 +210,16 @@ static int nat_outbound(struct pbuf *p) {
             uph[3]  = old_chk ? old_chk : 0xffffu;
         }
     } else {
-        // ICMP: rewrite echo id in payload, update ICMP checksum
-        uint16_t new_id   = htons(e->nat_port);
+        // ICMP: rewrite echo id.  Use nat_port directly as a host-order integer
+        // so that (>>8, &0xff) produces correct big-endian bytes.  This is
+        // consistent with how TCP/UDP write htons(nat_port) via the struct field:
+        // both result in nat_port's value in network byte order in the packet.
+        uint16_t new_id   = e->nat_port;
         uint16_t old_id   = ((uint16_t)tp[4] << 8) | tp[5];
         uint16_t old_ichk = ((uint16_t)tp[2] << 8) | tp[3];
         tp[4] = (uint8_t)(new_id >> 8);
         tp[5] = (uint8_t)(new_id & 0xff);
-        uint16_t new_ichk = chksum_adjust(old_ichk, htons(old_id), new_id);
+        uint16_t new_ichk = chksum_adjust(old_ichk, old_id, new_id);
         tp[2] = (uint8_t)(new_ichk >> 8);
         tp[3] = (uint8_t)(new_ichk & 0xff);
     }
@@ -252,7 +256,9 @@ static int nat_inbound(struct pbuf *p) {
         return 0;
     }
 
-    nat_entry_t *e = find_inbound(orig_dst_he, ntohs(dport), proto);
+    // dport was read with explicit big-endian decode ((hi<<8)|lo), giving the
+    // same integer value as nat_port stored in host order.  No ntohs needed.
+    nat_entry_t *e = find_inbound(orig_dst_he, dport, proto);
     if (!e) return 0;   // no mapping → pass to normal input
 
     e->last_seen_ms = now_ms();
@@ -283,17 +289,170 @@ static int nat_inbound(struct pbuf *p) {
         }
     } else {
         // ICMP echo reply: restore id
-        uint16_t new_id   = htons(e->orig_sport);
+        // orig_sport was stored as (tp[4]<<8)|tp[5] — already big-endian network order.
+        // Do NOT htons() here; the manual byte write below handles byte order correctly.
+        uint16_t new_id   = e->orig_sport;
         uint16_t old_id   = ((uint16_t)tp[4] << 8) | tp[5];
         uint16_t old_ichk = ((uint16_t)tp[2] << 8) | tp[3];
         tp[4] = (uint8_t)(new_id >> 8);
         tp[5] = (uint8_t)(new_id & 0xff);
-        uint16_t new_ichk = chksum_adjust(old_ichk, htons(old_id), new_id);
+        uint16_t new_ichk = chksum_adjust(old_ichk, old_id, new_id);
         tp[2] = (uint8_t)(new_ichk >> 8);
         tp[3] = (uint8_t)(new_ichk & 0xff);
     }
 
-    // Now the packet is destined for 10.0.0.x — let lwIP forward it.
+    // Destination rewritten — let lwIP forward the packet.
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// WiFi→USB outbound NAT: masquerade WiFi client as usb_ip_n (10.0.0.1)
+// Called when a packet arrives on WiFi destined for a USB client.
+// ---------------------------------------------------------------------------
+static int nat_outbound2(struct pbuf *p) {
+    struct ip_hdr *iph = (struct ip_hdr *)p->payload;
+    uint16_t ihl = IPH_HL(iph) * 4u;
+    if (p->len < ihl + 4) return 0;
+
+    uint8_t  proto    = IPH_PROTO(iph);
+    uint32_t orig_src = iph->src.addr;   // WiFi client
+    uint32_t orig_dst = iph->dest.addr;  // USB client
+
+    uint8_t *tp = (uint8_t *)p->payload + ihl;
+    uint16_t orig_sport = 0, orig_dport = 0;
+
+    if (proto == IP_PROTO_TCP || proto == IP_PROTO_UDP) {
+        orig_sport = ((uint16_t)tp[0] << 8) | tp[1];
+        orig_dport = ((uint16_t)tp[2] << 8) | tp[3];
+    } else if (proto == IP_PROTO_ICMP) {
+        if (tp[0] != ICMP_ECHO) return 0;
+        orig_sport = ((uint16_t)tp[4] << 8) | tp[5];
+        orig_dport = 0;
+    } else {
+        return 0;
+    }
+
+    nat_entry_t *e = find_outbound(ntohl(orig_src), ntohl(orig_dst),
+                                    orig_sport, orig_dport, proto);
+    if (!e) {
+        e = alloc_entry();
+        if (!e) { printf("NAT: table full (wf2usb)\r\n"); return 0; }
+        e->orig_src   = ntohl(orig_src);
+        e->orig_dst   = ntohl(orig_dst);
+        e->orig_sport = orig_sport;
+        e->orig_dport = orig_dport;
+        e->nat_port   = alloc_port();
+        e->proto      = proto;
+        e->active     = true;
+    }
+    e->last_seen_ms = now_ms();
+
+    // Rewrite IP src: WiFi client → usb_ip_n (10.0.0.1)
+    uint16_t old_ip_chk = iph->_chksum;
+    iph->src.addr = usb_ip_n;
+    iph->_chksum  = chksum_adjust32(old_ip_chk, orig_src, usb_ip_n);
+
+    if (proto == IP_PROTO_TCP) {
+        struct tcp_hdr *tcph = (struct tcp_hdr *)tp;
+        uint16_t old_chk = tcph->chksum;
+        uint16_t new_sport = htons(e->nat_port);
+        tcph->src  = new_sport;
+        old_chk = chksum_adjust32(old_chk, orig_src, usb_ip_n);
+        old_chk = chksum_adjust(old_chk, htons(orig_sport), new_sport);
+        tcph->chksum = old_chk;
+    } else if (proto == IP_PROTO_UDP) {
+        uint16_t *uph = (uint16_t *)tp;
+        uint16_t new_sport = htons(e->nat_port);
+        uint16_t old_chk   = uph[3];
+        uph[0] = new_sport;
+        if (old_chk != 0) {
+            old_chk = chksum_adjust32(old_chk, orig_src, usb_ip_n);
+            old_chk = chksum_adjust(old_chk, htons(orig_sport), new_sport);
+            uph[3]  = old_chk ? old_chk : 0xffffu;
+        }
+    } else {
+        // Same convention as nat_outbound: use nat_port directly.
+        uint16_t new_id   = e->nat_port;
+        uint16_t old_id   = ((uint16_t)tp[4] << 8) | tp[5];
+        uint16_t old_ichk = ((uint16_t)tp[2] << 8) | tp[3];
+        tp[4] = (uint8_t)(new_id >> 8);
+        tp[5] = (uint8_t)(new_id & 0xff);
+        uint16_t new_ichk = chksum_adjust(old_ichk, old_id, new_id);
+        tp[2] = (uint8_t)(new_ichk >> 8);
+        tp[3] = (uint8_t)(new_ichk & 0xff);
+    }
+
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// USB→WiFi inbound NAT: restore original WiFi client dst (de-masquerade)
+// Called when a packet on USB is destined for usb_ip_n (10.0.0.1) and may
+// be a reply to a WiFi→USB masqueraded session.
+// ---------------------------------------------------------------------------
+static int nat_inbound2(struct pbuf *p) {
+    struct ip_hdr *iph = (struct ip_hdr *)p->payload;
+    uint16_t ihl = IPH_HL(iph) * 4u;
+    if (p->len < ihl + 4) return 0;
+
+    uint8_t  proto   = IPH_PROTO(iph);
+    uint32_t pkt_src = iph->src.addr;   // USB client
+    uint32_t pkt_dst = iph->dest.addr;  // == usb_ip_n
+
+    uint8_t *tp = (uint8_t *)p->payload + ihl;
+    uint16_t dport = 0;
+    uint32_t orig_dst_he = ntohl(pkt_src);   // USB client = original dst
+
+    if (proto == IP_PROTO_TCP || proto == IP_PROTO_UDP) {
+        dport = ((uint16_t)tp[2] << 8) | tp[3];
+    } else if (proto == IP_PROTO_ICMP) {
+        if (tp[0] != ICMP_ER) return 0;
+        dport = ((uint16_t)tp[4] << 8) | tp[5];
+    } else {
+        return 0;
+    }
+
+    nat_entry_t *e = find_inbound(orig_dst_he, dport, proto);
+    if (!e) return 0;   // no mapping → local delivery to Pico
+
+    e->last_seen_ms = now_ms();
+
+    uint32_t new_dst_n = htonl(e->orig_src);   // original WiFi client IP
+    uint16_t old_ip_chk = iph->_chksum;
+    iph->dest.addr = new_dst_n;
+    iph->_chksum   = chksum_adjust32(old_ip_chk, pkt_dst, new_dst_n);
+
+    if (proto == IP_PROTO_TCP) {
+        struct tcp_hdr *tcph = (struct tcp_hdr *)tp;
+        uint16_t old_chk  = tcph->chksum;
+        uint16_t new_dport = htons(e->orig_sport);
+        tcph->dest   = new_dport;
+        old_chk = chksum_adjust32(old_chk, pkt_dst, new_dst_n);
+        old_chk = chksum_adjust(old_chk, dport, new_dport);
+        tcph->chksum = old_chk;
+    } else if (proto == IP_PROTO_UDP) {
+        uint16_t *uph  = (uint16_t *)tp;
+        uint16_t new_dport = htons(e->orig_sport);
+        uint16_t old_chk   = uph[3];
+        uph[1] = new_dport;
+        if (old_chk != 0) {
+            old_chk = chksum_adjust32(old_chk, pkt_dst, new_dst_n);
+            old_chk = chksum_adjust(old_chk, dport, new_dport);
+            uph[3]  = old_chk ? old_chk : 0xffffu;
+        }
+    } else {
+        // ICMP echo reply: restore id (same fix as nat_inbound — no htons()).
+        uint16_t new_id   = e->orig_sport;
+        uint16_t old_id   = ((uint16_t)tp[4] << 8) | tp[5];
+        uint16_t old_ichk = ((uint16_t)tp[2] << 8) | tp[3];
+        tp[4] = (uint8_t)(new_id >> 8);
+        tp[5] = (uint8_t)(new_id & 0xff);
+        uint16_t new_ichk = chksum_adjust(old_ichk, old_id, new_id);
+        tp[2] = (uint8_t)(new_ichk >> 8);
+        tp[3] = (uint8_t)(new_ichk & 0xff);
+    }
+
+    // Destination rewritten to WiFi client — let lwIP forward via WiFi.
     return 0;
 }
 
@@ -303,32 +462,54 @@ static int nat_inbound(struct pbuf *p) {
 // Return 0 to let lwIP continue; return 1 to claim the packet.
 // ---------------------------------------------------------------------------
 int nat_ip4_input_hook(struct pbuf *p, struct netif *inp) {
-    if (!wifi_ip_n || !usb_net_n) return 0;
+    if (!wifi_ip_n || !usb_ip_n) return 0;
 
     struct ip_hdr *iph = (struct ip_hdr *)p->payload;
     if (p->len < IP_HLEN) return 0;
 
-    uint32_t src = iph->src.addr;
     uint32_t dst = iph->dest.addr;
+    uint8_t  proto = IPH_PROTO(iph);
 
     struct netif *usb_if  = usb_net_get_netif();
     struct netif *wifi_if = wifi_ap_get_netif();
     if (!usb_if || !wifi_if) return 0;
 
-    // Outbound: packet arriving on USB, destined for WiFi subnet
+#if VERBOSE_LOG
+    if (proto == IP_PROTO_ICMP && p->len >= IPH_HL(iph)*4u + 1u) {
+        uint8_t *tp = (uint8_t *)p->payload + IPH_HL(iph)*4u;
+        ip4_addr_t sa, da;
+        sa.addr = iph->src.addr;  da.addr = iph->dest.addr;
+        char src_s[16], dst_s[16];
+        ip4addr_ntoa_r(&sa, src_s, sizeof src_s);
+        ip4addr_ntoa_r(&da, dst_s, sizeof dst_s);
+        printf("NAT ICMP: inp=%c%c src=%s dst=%s type=%u\r\n",
+               inp->name[0], inp->name[1], src_s, dst_s, tp[0]);
+    }
+#endif
+
     if (inp == usb_if) {
-        // Is the destination on the WiFi subnet?
-        uint32_t wifi_net  = wifi_if->ip_addr.addr & wifi_if->netmask.addr;
-        uint32_t dst_net   = dst & wifi_if->netmask.addr;
-        if (dst_net == wifi_net && dst != wifi_ip_n) {
-            nat_outbound(p);
+        if (dst == usb_ip_n) {
+            // Reply from USB client to a WiFi→USB masqueraded session.
+            nat_inbound2(p);
+        } else {
+            // USB client → WiFi client: masquerade src as wifi_ip_n.
+            uint32_t wifi_net = wifi_if->ip_addr.addr & wifi_if->netmask.addr;
+            if ((dst & wifi_if->netmask.addr) == wifi_net && dst != wifi_ip_n)
+                nat_outbound(p);
         }
         return 0;
     }
 
-    // Inbound: packet arriving on WiFi, destined for our masquerade IP
-    if (inp == wifi_if && dst == wifi_ip_n) {
-        nat_inbound(p);
+    if (inp == wifi_if) {
+        if (dst == wifi_ip_n) {
+            // Reply from WiFi client to a USB→WiFi masqueraded session.
+            nat_inbound(p);
+        } else {
+            // WiFi client → USB client: masquerade src as usb_ip_n.
+            uint32_t usb_net = usb_if->ip_addr.addr & usb_if->netmask.addr;
+            if ((dst & usb_if->netmask.addr) == usb_net && dst != usb_ip_n)
+                nat_outbound2(p);
+        }
         return 0;
     }
 
@@ -348,10 +529,13 @@ void nat_init(void) {
 
     struct netif *usb_if = usb_net_get_netif();
     if (usb_if) {
+        usb_ip_n   = usb_if->ip_addr.addr;
         usb_net_n  = usb_if->ip_addr.addr & usb_if->netmask.addr;
         usb_mask_n = usb_if->netmask.addr;
     }
 
-    printf("NAT: init, masquerade IP=%s table=%d entries\n",
-           ip4addr_ntoa((ip4_addr_t *)&wifi_ip_n), NAT_TABLE_SIZE);
+    printf("NAT: WiFi masq=%s  USB masq=%s  table=%d entries\r\n",
+           ip4addr_ntoa((ip4_addr_t *)&wifi_ip_n),
+           ip4addr_ntoa((ip4_addr_t *)&usb_ip_n),
+           NAT_TABLE_SIZE);
 }

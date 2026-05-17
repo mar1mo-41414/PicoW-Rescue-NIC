@@ -48,6 +48,12 @@
 #define MEMP_NUM_ARP_QUEUE          6
 #define LWIP_TCP_KEEPALIVE          1
 
+// --- Socket options ---
+// SO_REUSE allows two UDP PCBs to share port 67 (both DHCP servers need it).
+// Without this, the second udp_bind(IP_ADDR_ANY, 67) returns ERR_USE and the
+// PCB is never added to udp_pcbs, so its recv callback is never called.
+#define SO_REUSE                    1
+
 // --- Netif callbacks ---
 #define LWIP_NETIF_STATUS_CALLBACK  1
 #define LWIP_NETIF_LINK_CALLBACK    1
@@ -58,8 +64,17 @@
 #define DHCP_DOES_ARP_CHECK         0
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
-// --- Checksum ---
+// --- Checksum --- disable HW offload so lwIP does SW check
 #define LWIP_CHKSUM_ALGORITHM       3
+#define CHECKSUM_GEN_IP             1
+#define CHECKSUM_GEN_UDP            1
+#define CHECKSUM_GEN_TCP            1
+// ICMP checksums must NOT be zeroed by ip4_forward for WiFi TX (CYW43 does
+// not recompute them).  usb_fill_checksums() handles the USB TX direction.
+#define CHECKSUM_GEN_ICMP           0
+#define CHECKSUM_CHECK_IP           0   // don't drop on bad IP checksum
+#define CHECKSUM_CHECK_UDP          0   // don't drop on bad UDP checksum
+#define CHECKSUM_CHECK_TCP          1
 
 // --- lwIP hook for custom NAPT (src/nat.c) ---
 // Declare the hook function here; implementation is in nat.c.
@@ -68,6 +83,11 @@ struct pbuf;
 struct netif;
 int nat_ip4_input_hook(struct pbuf *p, struct netif *inp);
 #define LWIP_HOOK_IP4_INPUT(p, inp)  nat_ip4_input_hook(p, inp)
+
+// --- Verbose debug logging ---
+// Set to 1 to re-enable per-packet USB RX/TX, NAT ICMP, and DHCP recv logs.
+// Set to 0 (default) for normal operation.
+#define VERBOSE_LOG                 0
 
 // --- Stats (disable in production to save RAM) ---
 #define LWIP_STATS                  0

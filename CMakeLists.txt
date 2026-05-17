@@ -17,6 +17,7 @@ pico_sdk_init()
 
 add_executable(picow_nic
     src/main.c
+    src/stdio_cdc.c
     src/usb_descriptors.c
     src/usb_net.c
     src/wifi_ap.c
