@@ -1,108 +1,210 @@
-# PicoW-NIC — USB-WiFi Bridge Firmware
+# 🆘 PicoW-Rescue-NIC
 
-Raspberry Pi Pico W を超小型 USB 無線 NIC / デバッグブリッジとして動作させる
-ネイティブ C ファームウェア。
+> **Your server's emergency exit — always on, independent of the OS network stack.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20Pico%20W-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
+[![SDK](https://img.shields.io/badge/Pico%20SDK-2.x-blue)](https://github.com/raspberrypi/pico-sdk)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#build)
+
+---
+
+## The Problem
+
+You've been there.
 
 ```
-PC A
- ↕ WiFi (192.168.4.0/24)
-Raspberry Pi Pico W  ← NAT + IP forwarding
- ↕ USB Ethernet (10.0.0.0/24)
-PC B
+[You, at home] ──── Internet ──✗── [Your server, somewhere far away]
+```
+
+You ran `iptables -F` and forgot to re-open SSH.  
+You misconfigured a network interface.  
+You killed NetworkManager while testing something.  
+You fat-fingered a routing table entry.
+
+**The machine is alive. The disk is fine. But you cannot get in.**
+
+You need physical access — or you need to call someone.
+
+---
+
+## The Solution
+
+Plug a **$6 Raspberry Pi Pico W** into any spare USB port on the server.
+
+```
+[You, at home]
+      │
+      ▼ WiFi (192.168.4.0/24)
+ ┌────────────┐
+ │  Pico W    │  ← 4cm × 2cm, always-on, USB-powered
+ │  Rescue NIC│
+ └────────────┘
+      │ USB CDC-NCM (10.0.0.0/24)
+      ▼
+[Locked-out server]
+  - SSH still works
+  - curl still works
+  - ping still works
+  - iptables/routing
+    changes still apply
+```
+
+The Pico W appears as a **standard USB Ethernet adapter** (CDC-NCM) on the server.  
+It simultaneously runs a **WiFi Access Point**.  
+You connect from your phone or laptop over WiFi, SSH through the bridge, and fix what's broken.
+
+**No drivers. No cloud. No vendor lock-in. Works offline.**
+
+---
+
+## Features
+
+| Feature | Detail |
+|---------|--------|
+| 🔌 **USB Ethernet (CDC-NCM)** | Plug-and-play on Linux, macOS, Windows 10+ |
+| 📡 **WiFi Access Point** | WPA2-AES, configurable SSID/password |
+| 🔄 **Bidirectional IP Routing** | Full NAT/NAPT — SSH, curl, ping, SCP |
+| 🏷️ **Auto Route Distribution** | DHCP option 121 pushes WiFi routes to server automatically |
+| 🖥️ **Debug Console** | CDC-ACM serial — firmware logs over the same USB cable |
+| ⚡ **Zero Dependencies** | No OS, no RTOS, no kernel modules required |
+| 🔋 **USB Bus-powered** | Draws ~100mA — survives server reboots via USB |
+
+---
+
+## Use Cases
+
+### 🏠 Homelab & Self-hosted
+
+- Locked out of a server after misconfiguring `iptables` / `nftables`
+- Testing network changes without fear — always have a fallback
+- Remote access to a machine with no WiFi card
+
+### 🏢 Datacenter / Colocation
+
+- Emergency access when the management network is down
+- Secondary OOB (Out-of-Band) path alongside IPMI/iDRAC
+- Pre-installed on servers as a "break glass" option
+
+### 🧪 Development & Lab
+
+- Network-independent access to embedded targets
+- Testing network stack changes on a live system
+- Isolated test network without touching the main LAN
+
+### 🚗 Portable / Field
+
+- Remote access point for a laptop in the field
+- USB tether with NAT to share WiFi over USB
+- Lightweight network bridge for demos
+
+---
+
+## Network Topology
+
+```
+                    ┌─────────────────────────────┐
+                    │       Raspberry Pi Pico W    │
+                    │                             │
+[WiFi Clients]      │  192.168.4.1  ←→  10.0.0.1  │      [USB Server]
+192.168.4.10 ───────│  WiFi AP               CDC-NCM│─────  10.0.0.2
+                    │      ↕ NAPT/Routing ↕         │
+                    └─────────────────────────────┘
+
+WiFi subnet : 192.168.4.0/24   (Pico = 192.168.4.1)
+USB subnet  : 10.0.0.0/24      (Pico = 10.0.0.1)
+WiFi client : 192.168.4.10     (DHCP fixed)
+USB server  : 10.0.0.2         (DHCP fixed)
+```
+
+### Packet Flow Example: SSH from Phone → Locked-out Server
+
+```
+Phone (192.168.4.10)
+  │  SSH TCP SYN → 10.0.0.2:22
+  ▼
+Pico W WiFi (192.168.4.1) — receives packet
+  │  NAT: src 192.168.4.10 → 10.0.0.1
+  ▼
+Pico W USB (10.0.0.1) — forwards via CDC-NCM
+  │
+  ▼
+Server (10.0.0.2) — receives SSH from 10.0.0.1
+  │  SSH SYN-ACK → 10.0.0.1
+  ▼
+Pico W USB — receives, NAT lookup
+  │  dst 10.0.0.1 → 192.168.4.10 (restored)
+  ▼
+Phone — SSH session established ✓
 ```
 
 ---
 
-## 機能
+## Hardware Requirements
 
-| 機能 | 詳細 |
-|------|------|
-| USB Ethernet | CDC-NCM (Linux/macOS/Windows10+) |
-| デバッグコンソール | CDC-ACM (UART over USB) |
-| WiFi AP | WPA2-AES-PSK, SSID=PicoBridge |
-| DHCP | USB側: 10.0.0.2〜、WiFi側: 192.168.4.2〜 |
-| NAT | NAPT on WiFi interface (USB→WiFi透過) |
-| IP forwarding | 双方向ルーティング |
+- **Raspberry Pi Pico W** (RP2040 + CYW43439)  
+  *~$6 USD — the only hardware needed*
+- USB-A to Micro-USB cable
+- Host: any Linux/macOS/Windows machine with a spare USB port
+
+> **Why not Pico 2 W?** Pico 2 W (RP2350) should work with minor SDK changes but hasn't been tested. PRs welcome.
 
 ---
 
-## プロジェクト構成
+## Build
 
-```
-PicoW-NIC/
-├── CMakeLists.txt       ビルド定義
-├── tusb_config.h        TinyUSB設定 (CDC-ACM + CDC-NCM composite)
-├── lwipopts.h           lwIP設定 (NO_SYS, IP_FORWARD, IP_NAPT)
-├── pico_sdk_import.cmake← SDKからコピー (後述)
-└── src/
-    ├── main.c           エントリポイント / メインループ
-    ├── usb_descriptors.c USB device/config/string descriptor
-    ├── usb_descriptors.h interface/EP番号定義
-    ├── usb_net.c        TinyUSB NCM ↔ lwIP ブリッジ
-    ├── usb_net.h
-    ├── wifi_ap.c        CYW43 AP mode + DHCP
-    ├── wifi_ap.h
-    ├── network.c        IP forwarding / NAPT 設定
-    ├── network.h
-    ├── dhcpserver.c     軽量 DHCP サーバー (2インスタンス対応)
-    └── dhcpserver.h
-```
-
----
-
-## ビルド手順
-
-### 前提
-
-- Raspberry Pi Pico SDK ≥ 1.5  (pico-sdk 2.x 推奨)
-- ARM GCC toolchain (`arm-none-eabi-gcc`)
-- CMake ≥ 3.13
-- `PICO_SDK_PATH` 環境変数が設定済みであること
+### Prerequisites
 
 ```bash
+# Install ARM toolchain (Ubuntu/Debian)
+sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+
+# Clone Pico SDK
+git clone https://github.com/raspberrypi/pico-sdk --recurse-submodules
 export PICO_SDK_PATH=/path/to/pico-sdk
 ```
 
-### 1. pico_sdk_import.cmake を用意
+### Clone & Build
 
 ```bash
-cp $PICO_SDK_PATH/external/pico_sdk_import.cmake .
-# または
-ln -s $PICO_SDK_PATH/external/pico_sdk_import.cmake .
-```
+git clone https://github.com/YOUR_USERNAME/PicoW-Rescue-NIC
+cd PicoW-Rescue-NIC
 
-### 2. ビルド
-
-```bash
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake .. -DPICO_BOARD=pico_w -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 ```
 
-成功すると `picow_nic.uf2` が生成される。
+Output: `build/picow_nic.uf2`
 
-### WiFi 設定変更
+### Customize WiFi Credentials
 
-`CMakeLists.txt` の `target_compile_definitions` を編集：
+Edit `CMakeLists.txt` before building:
 
 ```cmake
-WIFI_SSID="YourSSID"
-WIFI_PASSWORD="YourPassword"
-WIFI_CHANNEL=6
+target_compile_definitions(picow_nic PRIVATE
+    WIFI_SSID="YourRescueNet"
+    WIFI_PASSWORD="YourSecret"
+    WIFI_CHANNEL=6
+)
 ```
 
 ---
 
-## Pico W への書き込み
+## Flash
 
-### UF2 (推奨)
+### Method 1: UF2 (Recommended)
 
-1. BOOTSEL ボタンを押しながら USB 接続
-2. `RPI-RP2` ドライブが現れる
-3. `picow_nic.uf2` をドラッグ&ドロップ
-4. 自動的に再起動してファームウェア起動
+```bash
+# Hold BOOTSEL button while plugging USB
+# Drive "RPI-RP2" appears — copy the firmware
+cp build/picow_nic.uf2 /media/$USER/RPI-RP2/
 
-### openocd (SWD)
+# Or use the helper script
+./scripts/flash.sh
+```
+
+### Method 2: SWD (OpenOCD)
 
 ```bash
 openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
@@ -111,237 +213,257 @@ openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
 
 ---
 
-## 接続確認
+## Connect
 
-### Linux (PC B — USB ECM/NCM)
+### Step 1: Plug in the Pico W
 
-```bash
-# NCM インタフェースが現れる (通常 usb0 または enp0s20u1 など)
-ip link show
-# DHCP で 10.0.0.2 が割り当てられる
-ip addr show
-
-# Pico への疎通確認
-ping 10.0.0.1
-
-# WiFi 側への到達確認 (PC A の IP が 192.168.4.2 の場合)
-ping 192.168.4.2
-
-# WiFi 側へのルート追加 (NAPT が有効なら不要)
-ip route add 192.168.4.0/24 via 10.0.0.1
-```
-
-### macOS (PC B)
+USB in → server auto-configures the CDC-NCM interface via DHCP.
 
 ```bash
-# NetworkManager で自動認識、または
-networksetup -listallnetworkservices
-# "Pico W USB-WiFi Bridge" が現れる
-
-ping 10.0.0.1
-
-# WiFi→USB 方向ルート追加
-sudo route add 192.168.4.0/24 10.0.0.1
+# Verify on the server
+ip addr show        # → 10.0.0.2/24 on picow/usb0/enp...
+ip route            # → 192.168.4.0/24 via 10.0.0.1  ← auto-pushed by DHCP opt 121
 ```
 
-### Windows (PC B)
+No manual `ip route add` needed — the Pico tells the server about the WiFi subnet automatically.
 
-Windows 10 build 1903 以降は CDC-NCM を自動認識（ドライバ不要）。
+### Step 2: Connect to WiFi
 
-```powershell
-# デバイスマネージャーで "PicoW USB-WiFi Bridge" を確認
-# DHCP で 10.0.0.2 が付与される
-ping 10.0.0.1
+Join **`PicoBridge`** (password: `picobridge123`) from your phone or laptop.
 
-# ルート追加
-route add 192.168.4.0 mask 255.255.255.0 10.0.0.1
+```
+Your device gets: 192.168.4.10
 ```
 
-**旧 Windows (RNDIS) 対応** → 後述の「RNDIS ビルド」参照。
-
-### PC A (WiFi)
-
-1. SSID `PicoBridge` (パスワード `picobridge123`) に接続
-2. 192.168.4.2 が割り当てられる
+### Step 3: Reach the Server
 
 ```bash
-ping 192.168.4.1     # Pico WiFi
-
-# USB 側へのルート (NAPT 有効時は不要、NAT でマスカレード)
-ip route add 10.0.0.0/24 via 192.168.4.1
-
-ping 10.0.0.2        # USB PC B
+# From your phone/laptop (on PicoBridge WiFi)
+ssh user@10.0.0.2        # SSH into the locked-out server
+curl http://10.0.0.2      # HTTP
+ping 10.0.0.2             # Ping
+scp file user@10.0.0.2:~ # File copy
 ```
 
----
+### Adding a Route on WiFi Side (for WiFi → USB direction)
 
-## デバッグ
-
-デバッグ出力は **UART** (GP0=TX, GP1=RX, 115200 baud)。
+If your WiFi client needs to reach `10.0.0.x`:
 
 ```bash
-# Linux/macOS
-screen /dev/ttyUSB0 115200
-# または
-minicom -D /dev/ttyUSB0 -b 115200
+# macOS
+sudo route add -net 10.0.0.0/24 192.168.4.1
+
+# Linux
+sudo ip route add 10.0.0.0/24 via 192.168.4.1
+
+# Windows
+route add 10.0.0.0 mask 255.255.255.0 192.168.4.1
 ```
 
-USB が CDC-NCM で占有されているため、stdio USB は無効化してある。
-
 ---
 
-## USB Descriptor 設計解説
+## Debug Console
 
-### Composite Device (IAD)
+The Pico exposes a second USB serial port (CDC-ACM) for firmware logs.
 
-`bDeviceClass=0xEF / SubClass=0x02 / Protocol=0x01` により、
-OS は複数の Interface Association Descriptor (IAD) を持つ Composite として扱う。
+```bash
+# Linux
+screen /dev/ttyACM0 115200
 
-```
-Configuration 1
- ├─ IAD: CDC-ACM  (IF 0+1)
- │   ├─ IF 0: CDC Communication (INT EP 0x81)
- │   └─ IF 1: CDC Data (BULK 0x02 out / 0x82 in)
- └─ IAD: CDC-NCM  (IF 2+3)
-     ├─ IF 2: CDC Communication (INT EP 0x83)
-     │    Functional Descriptors: Header / Union / Ethernet / NCM
-     ├─ IF 3 alt 0: CDC Data (no endpoints — inactive)
-     └─ IF 3 alt 1: CDC Data (BULK 0x04 out / 0x84 in — active)
+# macOS
+screen /dev/cu.usbmodem* 115200
+
+# Windows
+# COM port in Device Manager → PuTTY
 ```
 
-NCM の Data Interface が 2 つの AlternateSetting を持つのは CDC 仕様の要件。
-ホストが `SET_INTERFACE alt=1` を送ると Data IF がアクティブになり、
-`tud_network_init_cb()` が呼ばれる。
-
-### CDC-NCM vs CDC-ECM
-
-| 項目 | CDC-ECM | CDC-NCM |
-|------|---------|---------|
-| フレーム集約 | なし (1転送=1フレーム) | あり (NTB: 複数フレームを1転送) |
-| スループット | 低い | 高い |
-| ホスト対応 | Linux/macOS (古いWindows非対応) | Linux/macOS/Windows 10+ |
-| 実装難度 | 低い | やや高い |
-
-本実装は NCM を採用。ECM に変更するには `CFG_TUD_NET` クラスの設定を変更し、
-descriptor を ECM 用に置き換える。
-
-### CDC-ECM vs RNDIS (Windows)
-
-RNDIS は Microsoft 独自拡張。古い Windows では RNDIS が必要だが、
-Windows 10 build 1903 以降は NCM / ECM も標準ドライバで動作する。
-
----
-
-## lwIP NAT 構成解説
-
-`ip4_napt.c` (lwIP contrib) を使用：
+### Boot Log
 
 ```
-USB PC (10.0.0.2) → [USB IF: 10.0.0.1] Pico [WiFi IF: 192.168.4.1] → WiFi Client (192.168.4.2)
-                                              ↑ NAPT masquerade ここで発動
+================================================
+ PicoW-NIC  USB-WiFi Bridge
+ USB subnet : 10.0.0.0/24
+ WiFi subnet: 192.168.4.0/24  SSID=PicoBridge
+================================================
+
+WiFi AP: SSID=PicoBridge  Pico=192.168.4.1  Client=192.168.4.10
+Network: IP forwarding enabled (IP_FORWARD=1)
+Network: NAPT active
+Network: WiFi TX checksum wrapper installed
+
+Ready — connect PC to USB and/or WiFi AP "PicoBridge"
+
+--- Status ---
+USB  (us1): IP=10.0.0.1         link=UP
+WiFi (w10): IP=192.168.4.1      link=UP  RSSI=-42 dBm
 ```
 
-`ip_napt_enable(192.168.4.1, 1)` により、
-WiFi AP インタフェースから OUT するパケットがマスカレードされる。
+### Enable Verbose Logging
 
-- USB PC → WiFi Client: src=10.0.0.2 → NAT → src=192.168.4.1 として WiFi 側へ
-- 返りパケット: dst=192.168.4.1 → NAT で逆変換 → dst=10.0.0.2 として USB 側へ
+For per-packet tracing (useful for debugging NAT/routing issues):
 
-WiFi クライアントは NAT の存在を意識しない。USB PC 側もデフォルトゲートウェイ
-(10.0.0.1) さえ設定すれば追加設定不要。
+```c
+// lwipopts.h — set to 1 and rebuild
+#define VERBOSE_LOG  1
+```
 
----
-
-## メモリ使用量見積もり
-
-| 領域 | サイズ | 備考 |
-|------|--------|------|
-| lwIP ヒープ (MEM_SIZE) | 20 KB | PCB・ARP cache 等 |
-| pbuf プール (20 × 1514) | ~30 KB | Ethernet フレームバッファ |
-| TinyUSB (NCM + ACM) | ~6 KB | EP バッファ含む |
-| CYW43 ドライババッファ | ~16 KB | SDK 内部 |
-| NAPT テーブル (64 エントリ) | ~2 KB | ip4_napt.c 内部 |
-| コードスタック等 | ~8 KB | |
-| **合計 (概算)** | **~82 KB** | 264 KB SRAM の 31% |
-
-コードサイズは Flash に収まる（通常 100–200 KB 程度）。
-
-> **注意**: pbuf プール (`PBUF_POOL_SIZE`) を増やすと RAM 消費が大きく増える。
-> 20 → 32 で約 18 KB 増加。Pico W の 264 KB SRAM に注意。
+Produces per-packet output:
+```
+USB RX: 98 bytes  IPv4 proto=1 dport=12345
+NAT ICMP: inp=w1 src=192.168.4.10 dst=10.0.0.2 type=8
+USB TX: 98 bytes  ready=1 can_xmit=1
+```
 
 ---
 
-## 実効速度見積もり
+## Technical Architecture
 
-USB 2.0 FS (12 Mbps) の理論上限。実効は：
+### Stack Overview
 
-| 経路 | 推定スループット |
-|------|----------------|
-| USB → WiFi (TX) | 2–4 Mbps |
-| WiFi → USB (RX) | 2–4 Mbps |
-| USB ↔ USB (loopback) | ~8 Mbps |
+```
+┌─────────────────────────────────────────────────────┐
+│                    Application                       │
+│         main.c — cooperative poll loop               │
+├──────────────────┬──────────────────────────────────┤
+│   TinyUSB        │         lwIP (NO_SYS=1)           │
+│   CDC-NCM        │  IP_FORWARD + LWIP_HOOK_IP4_INPUT │
+│   CDC-ACM        │         NAPT (nat.c)              │
+├──────────────────┼──────────────────────────────────┤
+│  USB peripheral  │      CYW43439 WiFi driver         │
+│  (RP2040 USB)    │      (cyw43_arch_lwip_poll)       │
+└──────────────────┴──────────────────────────────────┘
+           RP2040 @ 125 MHz — 264 KB SRAM
+```
 
-lwIP のコピー・処理オーバーヘッドと RP2040 の CPU 速度 (125 MHz) で上限が決まる。
-CDN-NCM のフレーム集約により ECM より 1.5–2× 程度高速。
+### Key Design Decisions
+
+**Why custom NAPT?**  
+The Pico SDK's bundled lwIP snapshot does not include `ip4_napt.c` (added post-2.1.x).  
+We implement a minimal NAT table in `src/nat.c` using `LWIP_HOOK_IP4_INPUT`.
+
+**Why software checksums?**  
+`ip4_forward()` zeroes IP/TCP/UDP/ICMP checksums assuming the NIC hardware will fill them in  
+(checksum offload). Neither TinyUSB's CDC-NCM nor the CYW43 driver implement offload.  
+We recompute all checksums in software in the `linkoutput` path for both interfaces.
+
+**Why no RTOS?**  
+TinyUSB and lwIP both have cooperative poll modes that work together cleanly.  
+Adding an RTOS would complicate the `tud_task()` / `cyw43_arch_poll()` interaction  
+with no benefit for this use case.
+
+See [`docs/architecture.md`](docs/architecture.md) for full design notes.  
+See [`docs/investigation.md`](docs/investigation.md) for the debugging journey and bug analysis.
 
 ---
 
-## RNDIS ビルド (Windows 旧版対応)
+## Project Structure
 
-1. `tusb_config.h` を編集:
-   ```c
-   // CFG_TUD_NET は維持、NCM → RNDIS に切替
-   // (TinyUSB の設定方法は tusb.h のコメント参照)
-   ```
-2. `usb_descriptors.c` で `TUD_CDC_NCM_DESCRIPTOR` を `TUD_RNDIS_DESCRIPTOR` に変更
-3. Windows: RNDIS ドライバは `%windir%\inf\netrndis.inf` が使われる
-
-Windows 10 以降では NCM のほうが安定・高速なため推奨。
+```
+PicoW-Rescue-NIC/
+├── README.md
+├── LICENSE
+├── CMakeLists.txt          Build configuration
+├── lwipopts.h              lwIP tuning (VERBOSE_LOG, checksums, NAT hook)
+├── tusb_config.h           TinyUSB config (CDC-NCM + CDC-ACM composite)
+├── pico_sdk_import.cmake
+│
+├── src/
+│   ├── main.c              Entry point, cooperative poll loop
+│   ├── usb_net.c/h         CDC-NCM ↔ lwIP bridge + SW checksum engine
+│   ├── wifi_ap.c/h         CYW43 AP mode + DHCP server init
+│   ├── network.c/h         WiFi TX checksum wrapper, network_init()
+│   ├── nat.c/h             Bidirectional NAPT (TCP/UDP/ICMP)
+│   ├── dhcpserver.c/h      Fixed-IP DHCP server with DHCP opt 121
+│   ├── usb_descriptors.c/h Composite USB descriptor (IAD)
+│   └── stdio_cdc.c         printf → CDC-ACM serial
+│
+├── docs/
+│   ├── architecture.md     Design decisions, data flow diagrams
+│   ├── investigation.md    Bug analysis: checksums, NAT, lwIP internals
+│   ├── troubleshooting.md  Common problems and solutions
+│   └── spec.md             Full specification
+│
+├── images/                 Photos, diagrams (see docs)
+└── scripts/
+    └── flash.sh            One-command flash helper
+```
 
 ---
 
-## 将来の拡張案
+## Known Limitations
 
-| 拡張 | 概要 |
+| Limitation | Notes |
+|-----------|-------|
+| One WiFi client | DHCP assigns a fixed IP — multiple clients need dhcpserver expansion |
+| USB Full Speed | 12 Mbps physical limit; effective ~2–4 Mbps through NAT |
+| IPv6 not supported | `LWIP_IPV6=0` — IPv4 only |
+| WiFi client needs manual route | For WiFi→USB direction; USB→WiFi is automatic via DHCP opt 121 |
+| No encryption | WiFi uses WPA2 but the bridge itself has no additional auth |
+| Pico W only | Tested on RP2040 + CYW43439 only |
+
+---
+
+## Roadmap / TODO
+
+- [ ] **Multiple WiFi clients** — DHCP lease table instead of fixed IP
+- [ ] **Station mode** — connect Pico to upstream WiFi, bridge to USB (reverse direction)
+- [ ] **Web status page** — lwIP httpd showing link state, NAT table, RSSI
+- [ ] **DNS proxy** — forward DNS queries from USB side through WiFi
+- [ ] **WireGuard** — encrypted tunnel on top of the WiFi link
+- [ ] **RNDIS support** — for older Windows versions
+- [ ] **Pico 2 W (RP2350)** — port and test
+- [ ] **USB High Speed** — external PHY or RP2350 for >12 Mbps
+
+---
+
+## Contributing
+
+Issues and PRs are welcome. Before submitting:
+
+1. Read [`docs/architecture.md`](docs/architecture.md) for design context
+2. Check [`docs/investigation.md`](docs/investigation.md) for known NAT/checksum gotchas
+3. Run a basic ping + SSH test in both directions before submitting
+
+---
+
+## Public Name Candidates
+
+If you're forking/renaming this project, here are some alternatives:
+
+| Name | Vibe |
 |------|------|
-| Web UI | lwIP httpd で接続状態・RSSI・クライアント一覧を表示 |
-| DNS プロキシ | USB 側の DNS を WiFi AP 経由で転送 |
-| RNDIS composite | Windows 旧版サポート (alternate config) |
-| Station + AP | WiFi を STA モードにして上流 WiFi に接続し USB PC へ転送 |
-| VPN | WireGuard-lwIP で暗号化トンネル |
-| USB HS | RP2350 / 外付け USB HS PHY で 480 Mbps |
+| **pico-rescue-nic** | Descriptive, search-friendly |
+| **break-glass-nic** | "Break glass in emergency" sysadmin reference |
+| **usb-lifeline** | Emotional, memorable |
+| **pico-lastroute** | Pun on "last resort" + routing |
+| **netcork** | Compact — like a cork/stopper for a network hole |
+| **pico-oob** | Out-of-Band management reference |
+| **picogate** | Minimal, clean |
 
 ---
 
-## トラブルシュート
+## License
 
-### USB デバイスが認識されない
+MIT — see [LICENSE](LICENSE)
 
-- BOOTSEL ボタンを押してファームウェアが正常に書き込まれているか確認
-- `lsusb` (Linux) / デバイスマネージャー (Windows) で `0xCAFE:0x4010` を確認
-- `pico_enable_stdio_usb` が **0** になっているか確認 (USB を CDC-NCM が占有)
+---
 
-### IP アドレスが取得できない
+## Acknowledgements
 
-- DHCP サーバーのログを UART で確認 (`screen /dev/ttyUSB0 115200`)
-- Linux: `sudo dhclient usb0` で手動 DHCP 要求
-- macOS: ネットワーク環境設定 → 接続インタフェース → DHCP を更新
+- [Raspberry Pi Foundation](https://www.raspberrypi.com/) — Pico W hardware + SDK
+- [TinyUSB](https://github.com/hathach/tinyusb) — USB device stack
+- [lwIP](https://savannah.nongnu.org/projects/lwip/) — TCP/IP stack
+- [Pico SDK](https://github.com/raspberrypi/pico-sdk) — board support + CYW43 driver
 
-### WiFi AP に接続できない
+---
 
-- パスワードが `picobridge123` であることを確認
-- チャンネル 6 が他の AP と干渉していないか確認
-- `CMakeLists.txt` の `WIFI_CHANNEL` を 1 または 11 に変更してリビルド
+<details>
+<summary>📷 Photos / Demo (click to expand)</summary>
 
-### NAT が動かない / 疎通しない
+<!-- Add photos here -->
+> *Photo: Pico W plugged into a server's USB port, WiFi connected from phone*
 
-- `ip4_napt.c` がビルドに含まれているか cmake 出力を確認
-  (`NAPT: found ...` メッセージが表示されるはず)
-- 含まれていない場合は静的ルートを手動追加 (README「接続確認」参照)
-- ファイアウォールが有効な場合は転送ルールを確認
+<!-- Add GIF here -->
+> *GIF: SSH session established through Pico W bridge*
 
-### スループットが低い
-
-- USB FS (12 Mbps) が物理上限 — これは仕様
-- `TCP_WND` を大きくすると TCP スループット向上 (要 RAM 確認)
-- `PBUF_POOL_SIZE` を増やすとバースト耐性が上がる (RAM 増加)
+</details>
