@@ -30,7 +30,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc-arm-none-eabi libnewlib-arm-none-eabi cmake build-essential
+            gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib cmake build-essential
 
       # ── Pico SDK (cached) ──────────────────────────────────────────────────
       - name: Cache Pico SDK
