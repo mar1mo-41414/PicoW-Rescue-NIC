@@ -1,39 +1,42 @@
-# Troubleshooting Guide — PicoW-Rescue-NIC
+# トラブルシューティング — PicoW-Rescue-NIC
+
+英語版: [troubleshooting-EN.md](troubleshooting-EN.md)
 
 ---
 
-## Quick Diagnostic Checklist
+## クイック診断チェックリスト
 
-1. Does the USB interface appear on the server? (`ip addr` shows `10.0.0.2/24`)
-2. Does the server have the WiFi route? (`ip route` shows `192.168.4.0/24 via 10.0.0.1`)
-3. Can the server ping the Pico? (`ping 10.0.0.1`)
-4. Can the WiFi client ping the Pico? (`ping 192.168.4.1`)
-5. Can the WiFi client ping the server? (`ping 10.0.0.2`)
+1. USB インターフェースがサーバーに表示されているか？（`ip addr` で `10.0.0.2/24` が見える）
+2. サーバーに WiFi ルートがあるか？（`ip route` で `192.168.4.0/24 via 10.0.0.1` が見える）
+3. サーバーから Pico に ping できるか？（`ping 10.0.0.1`）
+4. WiFi クライアントから Pico に ping できるか？（`ping 192.168.4.1`）
+5. WiFi クライアントからサーバーに ping できるか？（`ping 10.0.0.2`）
 
-If step 1–4 pass but step 5 fails, the issue is in NAT or routing. Enable verbose logging to diagnose.
+1〜4 が通って 5 が失敗する場合、NAT またはルーティングの問題です。詳細ログを有効にして診断してください。
 
 ---
 
-## Problem: Pico Not Appearing as a USB Network Interface
+## 問題: Pico が USB ネットワークインターフェースとして現れない
 
-### Symptom
-`ip addr` shows no new network interface after plugging in the Pico.
+### 症状
 
-### Possible Causes & Fixes
+Pico を接続した後、`ip addr` に新しいネットワークインターフェースが表示されない。
 
-**The Pico is not running the firmware**
-- Check: LED should be solid on (WiFi AP active). If LED is off or blinking, the firmware may not be flashed.
-- Fix: Re-flash. Hold BOOTSEL, plug USB, copy `.uf2` to the RPI-RP2 drive.
+### 原因と解決策
 
-**CDC-NCM not supported by OS**
-- Windows 7/8 and some older Windows 10 builds may not support CDC-NCM without drivers.
-- Fix: Use Windows 10 version 1903+ or Windows 11. For older Windows, RNDIS support is on the roadmap.
+**ファームウェアが動作していない**
+- 確認: LED が点灯し続けているべき（WiFi AP 動作中）。LED が消灯またはチカチカしている場合、ファームウェアが書き込まれていない可能性があります。
+- 解決: 再フラッシュ。BOOTSEL を押しながら USB 接続、`.uf2` を RPI-RP2 ドライブにコピー。
 
-**USB cable issue**
-- Charge-only cables have no data lines.
-- Fix: Use a known-good data cable.
+**OS が CDC-NCM に対応していない**
+- Windows 7/8 や一部の古い Windows 10 ビルドはドライバなしで CDC-NCM に対応していない場合があります。
+- 解決: Windows 10 バージョン 1903 以降または Windows 11 を使用してください。古い Windows 向けの RNDIS サポートはロードマップにあります。
 
-**Missing kernel module (Linux)**
+**USB ケーブルの問題**
+- 充電専用ケーブルはデータ線がありません。
+- 解決: データ通信対応と確認できているケーブルを使用してください。
+
+**カーネルモジュールが読み込まれていない（Linux）**
 ```bash
 sudo modprobe cdc_ncm
 lsmod | grep cdc_ncm
@@ -41,215 +44,232 @@ lsmod | grep cdc_ncm
 
 ---
 
-## Problem: Got USB Interface But No IP Address
+## 問題: USB インターフェースは見えるが IP アドレスが割り当てられない
 
-### Symptom
-`ip addr` shows the interface (e.g., `picow`, `usb0`, `enp0s26u1u1u4`) but no IPv4 address.
+### 症状
 
-### Possible Causes & Fixes
+`ip addr` にインターフェース（例: `picow`、`usb0`、`enp0s26u1u1u4`）は表示されるが、IPv4 アドレスがない。
 
-**DHCP client not running**
+### 原因と解決策
+
+**DHCP クライアントが動作していない**
 ```bash
-sudo dhclient picow          # or your interface name
-# or with systemd-networkd:
-sudo networkctl               # check if interface is managed
+sudo dhclient picow          # またはお使いのインターフェース名
+# または systemd-networkd の場合:
+sudo networkctl               # インターフェースが管理されているか確認
 ```
 
-**Interface name differs from expected**
+**インターフェース名が異なる**
 ```bash
 ip link | grep -E "usb|picow|enp.*u"
 ```
-Use the actual interface name for DHCP.
+実際のインターフェース名を DHCP に使用してください。
 
-**Pico's DHCP server not ready yet**
-- The Pico needs ~2 seconds to initialize WiFi AP before USB DHCP is ready.
-- Fix: Unplug and replug the USB after 3 seconds.
+**Pico の DHCP サーバーがまだ準備できていない**
+- Pico は WiFi AP を初期化するまで約 2 秒かかります。USB の DHCP が準備できる前に接続した可能性があります。
+- 解決: 3 秒後に USB を差し直してください。
 
 ---
 
-## Problem: USB IP Works But No Route to WiFi Subnet
+## 問題: USB IP は通るが WiFi サブネットへのルートがない
 
-### Symptom
-`ping 10.0.0.1` succeeds but `ping 192.168.4.10` fails with "Network unreachable."
+### 症状
 
-### Cause
-The WiFi subnet route was not installed. This should happen automatically via DHCP option 121.
+`ping 10.0.0.1` は成功するが `ping 192.168.4.10` が「ネットワーク到達不能」で失敗する。
 
-### Fix
+### 原因
 
-**Check if the route was pushed:**
+WiFi サブネットのルートがインストールされていません。DHCP オプション 121 で自動的に設定されるはずです。
+
+### 解決策
+
+**ルートが配布されているか確認:**
 ```bash
 ip route | grep 192.168.4
-# Expected: 192.168.4.0/24 via 10.0.0.1 dev picow proto dhcp
+# 期待値: 192.168.4.0/24 via 10.0.0.1 dev picow proto dhcp
 ```
 
-**If not present, force a DHCP renew:**
+**表示されない場合、DHCP を強制更新:**
 ```bash
 sudo dhclient -r picow && sudo dhclient picow
 ```
 
-**If still not present (DHCP client doesn't support option 121):**
+**それでも表示されない場合（DHCP クライアントがオプション 121 未対応）:**
 ```bash
 sudo ip route add 192.168.4.0/24 via 10.0.0.1
 ```
 
-**Note:** Some minimal DHCP clients (e.g., `busybox udhcpc`) may not process option 121. `systemd-networkd`, `NetworkManager`, and `dhclient` all support it.
+**注意:** 一部の最小限 DHCP クライアント（例: `busybox udhcpc`）はオプション 121 を処理しない場合があります。`systemd-networkd`、`NetworkManager`、`dhclient` はいずれも対応しています。
 
 ---
 
-## Problem: Ping Works But SSH Fails
+## 問題: ping は通るが SSH が失敗する
 
-### Symptom
-`ping 10.0.0.2` works from the WiFi client, but `ssh user@10.0.0.2` times out or connection is refused.
+### 症状
 
-### Possible Causes & Fixes
+WiFi クライアントから `ping 10.0.0.2` は通るが、`ssh user@10.0.0.2` がタイムアウトまたは接続拒否される。
 
-**SSH not running on the server**
+### 原因と解決策
+
+**サーバーで SSH が動作していない**
 ```bash
-# On the server (via USB or local access):
+# サーバーで（USB または手元からアクセス）:
 systemctl status ssh
 sudo systemctl start ssh
 ```
 
-**iptables/nftables blocking the connection**
+**iptables/nftables がブロックしている**  
+まさにそれが今回の問題の理由でこのデバイスが必要なのですが:
 ```bash
-# On the server — that's why you're using the Pico! If SSH is blocked:
-sudo iptables -I INPUT -i picow -j ACCEPT   # or your USB interface name
-# Or flush all rules (careful on a production system):
+# サーバーで — USB インターフェース経由のトラフィックを許可:
+sudo iptables -I INPUT -i picow -j ACCEPT   # インターフェース名を実際のものに変更
+# または全ルールをフラッシュ（本番環境では注意）:
 sudo iptables -F
 ```
 
-**NAT table issue — enable verbose logging**
+**NAT テーブルの問題 — 詳細ログを有効にする**
 ```c
-// In lwipopts.h, set to 1 and rebuild:
+// lwipopts.h で 1 に設定してリビルド:
 #define VERBOSE_LOG  1
 ```
-Connect to the debug console and look for:
+デバッグコンソールで以下を確認:
 ```
 NAT TCP: inp=w1 src=192.168.4.10:XXXXX dst=10.0.0.2:22
 ```
-If this line appears, the outbound NAT is working. If the reply SYN-ACK never triggers an inbound NAT log, check the return path.
+この行が表示されれば outbound NAT は動作しています。SYN-ACK の応答に対して inbound NAT ログが現れない場合は、戻り方向のパスを確認してください。
 
 ---
 
-## Problem: Only One WiFi Client Can Connect
+## 問題: WiFi クライアントが 1 台しか接続できない
 
-### Symptom
-A second device cannot connect to the `PicoBridge` WiFi, or connects but gets no IP address.
+### 症状
 
-### Cause
-The DHCP server assigns a single fixed IP (`192.168.4.10`). Only one DHCP lease is supported. Multiple WiFi connections to the AP are possible, but only one will receive an IP.
+2 台目のデバイスが `PicoBridge` WiFi に接続できない、または接続できるが IP アドレスが取得できない。
 
-### Workaround
-Connect the second device manually with a static IP:
+### 原因
+
+DHCP サーバーが固定 IP（`192.168.4.10`）を 1 つだけ割り当てます。DHCP リースは 1 件のみ対応しています。AP 自体には複数台の WiFi 接続が可能ですが、IP を受け取れるのは 1 台だけです。
+
+### 回避策
+
+2 台目のデバイスに手動で静的 IP を設定:
 ```
 IP: 192.168.4.11
-Subnet: 255.255.255.0
-Gateway: 192.168.4.1
+サブネット: 255.255.255.0
+ゲートウェイ: 192.168.4.1
 ```
 
-### Fix (Future)
-Expand `dhcpserver.c` to support a lease table. Filed as a roadmap item.
+### 将来の修正
+
+`dhcpserver.c` をリーステーブル対応に拡張します。ロードマップに登録済み。
 
 ---
 
-## Problem: Connection Works Initially But Drops After a While
+## 問題: 最初は通信できるが時間が経つと切れる
 
-### Symptom
-SSH or ping works for a minute or two, then stalls or drops.
+### 症状
 
-### Possible Causes & Fixes
+SSH や ping が 1〜2 分は動作するが、その後停止または切断される。
 
-**NAT table timeout**
-Default TTL: TCP 120s, UDP 30s, ICMP 10s. Long-idle connections may be evicted.
+### 原因と解決策
 
-For SSH keep-alive, add to `~/.ssh/config`:
+**NAT テーブルのタイムアウト**  
+デフォルト TTL: TCP 120 秒、UDP 30 秒、ICMP 10 秒。長期間アイドルの接続が削除される可能性があります。
+
+SSH のキープアライブを設定:
 ```
+# ~/.ssh/config
 Host *
     ServerAliveInterval 30
     ServerAliveCountMax 3
 ```
 
-**NAT table full**
-If many connections are open simultaneously, the 64-entry table may exhaust.
+**NAT テーブルが満杯**  
+多数の接続が同時に存在すると 64 エントリのテーブルが枯渇する可能性があります。
 ```c
-// nat.h — increase the table size:
+// nat.h — テーブルサイズを増やす:
 #define NAT_TABLE_SIZE 128
 ```
 
-**WiFi interference**
-The Pico's AP may lose association with a client in noisy RF environments.
-Check the debug console for RSSI in the status output.
+**WiFi 電波干渉**  
+電波環境の悪い場所では Pico の AP がクライアントとの関連付けを失う可能性があります。  
+デバッグコンソールのステータス出力で RSSI を確認してください。
 
 ---
 
-## Problem: Debug Console Shows Nothing
+## 問題: デバッグコンソールに何も表示されない
 
-### Symptom
-Opening `/dev/ttyACM0` shows no output.
+### 症状
 
-### Possible Causes & Fixes
+`/dev/ttyACM0` を開いても出力がない。
 
-**Wrong device file**
+### 原因と解決策
+
+**デバイスファイルが違う**
 ```bash
 ls /dev/ttyACM*          # Linux
 ls /dev/cu.usbmodem*     # macOS
 ```
-There may be multiple ACM devices if other USB serial devices are connected.
+他の USB シリアルデバイスが接続されている場合、複数の ACM デバイスがある可能性があります。
 
-**Terminal not opened before Pico boot**
-The 5-second boot window waits for a CDC connection before printing the banner. If you open the terminal after that window, you missed the banner — but status lines appear every 15 seconds.
+**Pico の起動後にターミナルを開いた**  
+起動時の 5 秒間のウィンドウで CDC 接続を待ってからバナーを表示します。  
+そのウィンドウを過ぎてターミナルを開いた場合、バナーは見られませんが 15 秒ごとにステータス行が表示されます。
 
-**Baud rate matters for some terminals**
-Use 115200 baud, 8N1. This is the standard and should work with `screen`, `picocom`, or PuTTY.
+**一部のターミナルでボーレートが重要**  
+115200 ボー、8N1 を使用してください。`screen`、`picocom`、PuTTY いずれでも動作します。
 
 ```bash
 screen /dev/ttyACM0 115200
-# or
+# または
 picocom -b 115200 /dev/ttyACM0
 ```
 
 ---
 
-## Problem: Packets Are Forwarded But Checksums Are Wrong
+## 問題: パケットは転送されるがチェックサムが誤っている
 
-### Symptom
-`tcpdump -vv` on either interface shows `bad cksum` warnings. Packets are dropped by the destination.
+### 症状
 
-### Cause
-This should be fixed in v1.0. If you see this, it means the software checksum engines are not running.
+いずれかのインターフェースで `tcpdump -vv` が `bad cksum` 警告を表示する。宛先でパケットがドロップされる。
 
-### Diagnosis
+### 原因
+
+v1.0 では修正済みのはずです。これが見える場合、ソフトウェアチェックサムエンジンが動作していません。
+
+### 診断
 ```bash
 sudo tcpdump -i picow -n -vv icmp
-# Look for: ICMP echo reply, bad cksum 0 (->xxxx)!
+# 確認: ICMP echo reply, bad cksum 0 (->xxxx)!
 ```
 
-### Fix
-Verify `lwipopts.h` has:
+### 解決策
+
+`lwipopts.h` を確認:
 ```c
 #define CHECKSUM_GEN_IP     1
 #define CHECKSUM_GEN_TCP    1
 #define CHECKSUM_GEN_UDP    1
-#define CHECKSUM_GEN_ICMP   0   // must be 0 — ip4_forward zeros this otherwise
+#define CHECKSUM_GEN_ICMP   0   // 必ず 0 に — ip4_forward がゼロ化するため
 ```
 
-And that `usb_fill_checksums()` is being called in `usb_netif_linkoutput()`, and `wifi_fill_checksums()` is being called via the linkoutput wrapper in `network_init()`.
+`usb_fill_checksums()` が `usb_netif_linkoutput()` 内で呼ばれているか、  
+`wifi_fill_checksums()` が `network_init()` の linkoutput ラッパー経由で呼ばれているかも確認してください。
 
-See [`docs/investigation.md`](investigation.md) for the full checksum bug analysis.
+詳細は [`docs/investigation.md`](investigation.md) のチェックサムバグ解析を参照してください。
 
 ---
 
-## Enabling Verbose Per-Packet Logs
+## 詳細なパケット単位ログの有効化
 
-For detailed debugging, enable verbose logging:
+詳細なデバッグには詳細ログを有効化:
 
 ```c
 // lwipopts.h
-#define VERBOSE_LOG  1   // set to 1, rebuild and reflash
+#define VERBOSE_LOG  1   // 1 に設定してリビルド、再フラッシュ
 ```
 
-This enables per-packet output on the debug console:
+デバッグコンソールにパケット単位の出力が表示されます:
 
 ```
 USB RX: 98 bytes  IPv4 proto=1 dport=12345
@@ -257,40 +277,39 @@ NAT ICMP: inp=w1 src=192.168.4.10 dst=10.0.0.2 type=8
 USB TX: 98 bytes  ready=1 can_xmit=1
 ```
 
-**Log prefixes:**
-- `USB RX:` — packet received from USB host
-- `USB TX:` — packet being sent to USB host
-- `NAT ICMP/TCP/UDP:` — NAT table lookup/rewrite
-- `DHCP recv:` — DHCP packet handling
+**ログのプレフィックス:**
+- `USB RX:` — USB ホストからパケット受信
+- `USB TX:` — USB ホストへパケット送信
+- `NAT ICMP/TCP/UDP:` — NAT テーブル検索・書き換え
+- `DHCP recv:` — DHCP パケット処理
 
-Set back to `0` for normal use — verbose mode prints ~10 lines per ping packet and will slow things down.
+通常使用では `0` に戻してください — 詳細モードは ping 1 回につき約 10 行を出力し、パフォーマンスに影響します。
 
 ---
 
-## Reflashing the Firmware
+## ファームウェアの再フラッシュ
 
 ```bash
-# Method 1: UF2 drag-and-drop
-# 1. Unplug Pico
-# 2. Hold BOOTSEL button
-# 3. Plug USB — "RPI-RP2" drive appears
-# 4. Release button
+# 方法 1: UF2 ドラッグ＆ドロップ
+# 1. Pico を抜く
+# 2. BOOTSEL ボタンを押す
+# 3. USB を接続 — "RPI-RP2" ドライブが現れる
+# 4. ボタンを離す
 cp build/picow_nic.uf2 /media/$USER/RPI-RP2/
-# Pico reboots automatically
+# Pico が自動的に再起動
 
-# Method 2: picotool (if installed)
-picotool load build/picow_nic.uf2 --force
-picotool reboot
+# 方法 2: ヘルパースクリプト
+./scripts/flash.sh
 
-# Method 3: OpenOCD (SWD)
+# 方法 3: OpenOCD (SWD)
 openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
   -c "program build/picow_nic.elf verify reset exit"
 ```
 
 ---
 
-## Still Stuck?
+## それでも解決しない場合
 
-1. Check [`docs/investigation.md`](investigation.md) — it documents all bugs found during development
-2. Enable `VERBOSE_LOG=1`, capture the debug console output, and open an issue on GitHub
-3. Include: OS version, `ip addr`, `ip route`, `dmesg | tail -20`, and the Pico debug console log
+1. [`docs/investigation.md`](investigation.md) を確認 — 開発中に見つかったすべてのバグを記録しています
+2. `VERBOSE_LOG=1` を有効にし、デバッグコンソールの出力をキャプチャして GitHub に Issue を開く
+3. Issue に含めてほしい情報: OS バージョン、`ip addr`、`ip route`、`dmesg | tail -20`、Pico デバッグコンソールのログ

@@ -1,162 +1,167 @@
-# PicoW-Rescue-NIC v1.0 Specification
+# PicoW-Rescue-NIC v1.0 仕様書
+
+英語版: [spec-EN.md](spec-EN.md)
 
 ---
 
-## Overview
+## 概要
 
-Firmware for the Raspberry Pi Pico W that turns it into a USB-WiFi bridge NIC (Network Interface Card).
+Raspberry Pi Pico W を USB-WiFi ブリッジ NIC（ネットワークインターフェースカード）として機能させるファームウェアです。
 
-When plugged into a server via USB, the Pico W:
-- Appears as a standard USB Ethernet adapter (CDC-NCM) on the server
-- Simultaneously runs a WiFi Access Point
-- Routes and NATs IP traffic between the two networks
+USB に接続すると Pico W は:
+- サーバーに **標準 USB イーサネットアダプター（CDC-NCM）** として認識される
+- 同時に **WiFi アクセスポイント** を動作させる
+- 2 つのネットワーク間で IP トラフィックをルーティング・NAPT する
 
-This provides **out-of-band network access** to the server, independent of the server's primary network stack. If the server's normal network is misconfigured or locked down, the Pico W remains reachable via WiFi.
+これにより、サーバーのプライマリネットワークスタックとは独立した  
+**アウトオブバンドネットワークアクセス** を提供します。  
+サーバーの通常ネットワークが設定ミスやロックアウトで使えない状態でも、  
+Pico W は WiFi 経由でアクセス可能なままです。
 
 ```
-[Linux/Windows server] ──USB(CDC-NCM)──[Pico W]──WiFi(AP)──[Phone/Laptop]
-        10.0.0.2                         10.0.0.1              192.168.4.10
+[Linux/Windows サーバー]──USB(CDC-NCM)──[Pico W]──WiFi(AP)──[スマホ/ラップトップ]
+         10.0.0.2                        10.0.0.1               192.168.4.10
                                         192.168.4.1
 ```
 
 ---
 
-## Network Specification
+## ネットワーク仕様
 
-| Parameter | Value |
-|-----------|-------|
-| USB subnet | `10.0.0.0/24` |
-| Pico USB IP | `10.0.0.1` |
-| USB client IP | `10.0.0.2` (DHCP, fixed) |
-| WiFi SSID | `PicoBridge` (configurable) |
-| WiFi password | `picobridge123` (configurable) |
-| WiFi channel | 6 (configurable) |
-| WiFi security | WPA2-AES |
-| WiFi subnet | `192.168.4.0/24` |
-| Pico WiFi IP | `192.168.4.1` |
-| WiFi client IP | `192.168.4.10` (DHCP, fixed) |
+| 項目 | 値 |
+|------|-----|
+| USB サブネット | `10.0.0.0/24` |
+| Pico USB 側 IP | `10.0.0.1` |
+| USB クライアント IP | `10.0.0.2`（DHCP 固定） |
+| WiFi SSID | `PicoBridge`（変更可能） |
+| WiFi パスワード | `picobridge123`（変更可能） |
+| WiFi チャンネル | 6（変更可能） |
+| WiFi セキュリティ | WPA2-AES |
+| WiFi サブネット | `192.168.4.0/24` |
+| Pico WiFi 側 IP | `192.168.4.1` |
+| WiFi クライアント IP | `192.168.4.10`（DHCP 固定） |
 
-### Automatic Route Distribution
+### ルーティング自動設定
 
-The USB DHCP server sends DHCP option 121 (Classless Static Route, RFC 3442) with:
+USB 側 DHCP サーバーは DHCP オプション 121（Classless Static Route、RFC 3442）で以下を配布します:
 
 ```
 192.168.4.0/24  via  10.0.0.1
 ```
 
-Linux hosts honor this option automatically. The route appears as:
+Linux ホストはこのオプションを自動的に処理します。ルートは以下のように表示されます:
 ```bash
 ip route | grep 192.168.4
 # 192.168.4.0/24 via 10.0.0.1 dev picow proto dhcp src 10.0.0.2 metric 101
 ```
 
-No manual `ip route add` required. The route is managed by the DHCP client and survives reboots.
+手動での `ip route add` は不要です。ルートは DHCP クライアントが管理し、再起動後も維持されます。
 
 ---
 
-## Hardware Requirements
+## ハードウェア要件
 
-| Component | Specification |
-|-----------|--------------|
-| MCU | Raspberry Pi Pico W (RP2040 + CYW43439) |
-| USB cable | USB-A to Micro-USB, data-capable |
-| Host | Any Linux / macOS / Windows 10+ machine with USB port |
-| Power | USB bus power (~100 mA typical) |
+| コンポーネント | 仕様 |
+|--------------|------|
+| MCU | Raspberry Pi Pico W（RP2040 + CYW43439） |
+| USB ケーブル | USB-A to Micro-USB、データ通信対応 |
+| ホスト | USB ポートのある Linux / macOS / Windows 10+ マシン |
+| 電源 | USB バス給電（約 100 mA 典型値） |
 
-The Pico W costs approximately $6 USD. No additional components are required.
+Pico W は約 1,000 円です。追加コンポーネントは不要です。
 
 ---
 
-## Software Dependencies
+## ソフトウェア依存関係
 
-| Component | Version | Source |
-|-----------|---------|--------|
+| コンポーネント | バージョン | 入手元 |
+|--------------|----------|-------|
 | Pico SDK | 2.x | [raspberrypi/pico-sdk](https://github.com/raspberrypi/pico-sdk) |
-| TinyUSB | 0.15+ | Bundled with Pico SDK |
-| lwIP | 2.1.x | Bundled with Pico SDK |
-| Compiler | arm-none-eabi-gcc | Package manager |
-| CMake | 3.13+ | Package manager |
+| TinyUSB | 0.15+ | Pico SDK 同梱 |
+| lwIP | 2.1.x | Pico SDK 同梱 |
+| コンパイラ | arm-none-eabi-gcc | パッケージマネージャ |
+| CMake | 3.13+ | パッケージマネージャ |
 
 ---
 
-## Supported Protocols
+## 対応プロトコル
 
-| Protocol | USB→WiFi | WiFi→USB | Notes |
-|----------|----------|----------|-------|
-| ICMP (ping) | ✅ | ✅ | Full NAT with ID translation |
-| TCP (SSH, curl, HTTP) | ✅ | ✅ | Full NAPT with port translation |
-| UDP | ✅ | ✅ | Full NAPT with port translation |
-| IPv6 | ❌ | ❌ | Not implemented (`LWIP_IPV6=0`) |
-
----
-
-## USB Device Configuration
-
-The Pico W presents as a **composite USB device** with two interfaces:
-
-| Interface | USB Class | OS Name | Purpose |
-|-----------|-----------|---------|---------|
-| CDC-NCM + IAD | 0x02/0x0D | `picow`, `usb0`, `enp*` | USB Ethernet (IP traffic) |
-| CDC-ACM | 0x02/0x02 | `/dev/ttyACM*`, `COM*` | Debug serial console |
-
-**MAC Address:** `02:02:84:69:60:00` (locally administered, fixed)
-
-**CDC-NCM** was chosen over RNDIS for plug-and-play compatibility on Linux and macOS without drivers. Windows 10 version 1903+ supports CDC-NCM natively.
+| プロトコル | USB→WiFi | WiFi→USB | 備考 |
+|----------|----------|----------|------|
+| ICMP（ping） | ✅ | ✅ | ID 変換を含む完全な NAT |
+| TCP（SSH、curl、HTTP） | ✅ | ✅ | ポート変換を含む完全な NAPT |
+| UDP | ✅ | ✅ | ポート変換を含む完全な NAPT |
+| IPv6 | ❌ | ❌ | 未実装（`LWIP_IPV6=0`） |
 
 ---
 
-## NAPT (Network Address and Port Translation)
+## USB デバイス設定
 
-Custom bidirectional NAPT implemented in `src/nat.c` using `LWIP_HOOK_IP4_INPUT`.
+Pico W は **複合 USB デバイス** として提示されます（2 つのインターフェース）:
 
-### NAT Table
+| インターフェース | USB クラス | OS 上の名前 | 用途 |
+|---------------|----------|------------|------|
+| CDC-NCM + IAD | 0x02/0x0D | `picow`、`usb0`、`enp*` | USB イーサネット（IP トラフィック） |
+| CDC-ACM | 0x02/0x02 | `/dev/ttyACM*`、`COM*` | デバッグシリアルコンソール |
 
-- **Size:** 64 entries (configurable via `NAT_TABLE_SIZE` in `nat.h`)
-- **Port range:** 49152–65535 (IANA dynamic/private range)
-- **TTL:** TCP 120s, UDP 30s, ICMP 10s
+**MAC アドレス:** `02:02:84:69:60:00`（ローカル管理、固定）
 
-### Translation Flows
-
-| Direction | Source Masquerade | Destination Restore |
-|-----------|------------------|---------------------|
-| USB → WiFi | `nat_outbound`: client IP → `192.168.4.1` | `nat_inbound`: → original client IP |
-| WiFi → USB | `nat_outbound2`: client IP → `10.0.0.1` | `nat_inbound2`: → original client IP |
-
-### Checksum Handling
-
-`ip4_forward()` in lwIP zeros all transport checksums when `CHECKSUM_GEN_*=1` (hardware offload expected). Neither the USB CDC-NCM driver nor the CYW43 driver implements checksum offload.
-
-Software checksum engines recompute all checksums immediately before transmission:
-- **USB TX:** `usb_fill_checksums()` in `usb_net.c`
-- **WiFi TX:** `wifi_fill_checksums()` via linkoutput wrapper in `network.c`
+**CDC-NCM** を RNDIS より選択した理由は、Linux・macOS でドライバなしのプラグアンドプレイ互換性のためです。Windows 10 バージョン 1903 以降は CDC-NCM をネイティブサポートします。
 
 ---
 
-## DHCP Server
+## NAPT（ネットワークアドレス・ポート変換）
 
-Two independent DHCP servers, one per interface (`src/dhcpserver.c`):
+`src/nat.c` に `LWIP_HOOK_IP4_INPUT` を使った独自双方向 NAPT を実装。
 
-| Interface | Assigned IP | Lease Time | Option 121 |
-|-----------|-------------|------------|------------|
-| USB | `10.0.0.2` (fixed) | 86400s (24h) | `192.168.4.0/24 via 10.0.0.1` |
-| WiFi | `192.168.4.10` (fixed) | 86400s (24h) | (none) |
+lwIP 組み込みの NAPT（`ip4_napt.c`）は Pico SDK の lwIP スナップショットに含まれていません（上流 2.1.x 以降で追加）。
 
-Both servers respond only to the known MAC address to prevent accidental leases to other devices.
+### NAT テーブル
+
+- **サイズ:** 64 エントリ（`nat.h` の `NAT_TABLE_SIZE` で変更可能）
+- **ポート範囲:** 49152〜65535（IANA 動的/プライベートレンジ）
+- **TTL:** TCP 120 秒、UDP 30 秒、ICMP 10 秒
+
+### 変換フロー
+
+| 方向 | 送信元マスカレード | 宛先復元 |
+|------|-----------------|---------|
+| USB → WiFi | `nat_outbound`: クライアント IP → `192.168.4.1` | `nat_inbound`: → 元のクライアント IP |
+| WiFi → USB | `nat_outbound2`: クライアント IP → `10.0.0.1` | `nat_inbound2`: → 元のクライアント IP |
+
+### チェックサム処理
+
+lwIP の `ip4_forward()` は `CHECKSUM_GEN_*=1` のとき転送パケットのすべてのトランスポートチェックサムをゼロ化します（ハードウェアオフロード前提）。USB CDC-NCM ドライバも CYW43 ドライバもチェックサムオフロードを実装していません。
+
+送信直前にソフトウェアチェックサムエンジンがすべてのチェックサムを再計算します:
+- **USB TX:** `usb_net.c` の `usb_fill_checksums()`
+- **WiFi TX:** `network.c` の linkoutput ラッパー経由 `wifi_fill_checksums()`
 
 ---
 
-## Debug Console
+## DHCP サーバー
 
-The CDC-ACM interface provides a real-time debug console.
+インターフェースごとに独立した 2 つの DHCP サーバー（`src/dhcpserver.c`）:
 
-**Connect:**
+| インターフェース | 割当 IP | リース時間 | オプション 121 |
+|---------------|---------|----------|-------------|
+| USB | `10.0.0.2`（固定） | 86400 秒（24 時間） | `192.168.4.0/24 via 10.0.0.1` |
+| WiFi | `192.168.4.10`（固定） | 86400 秒（24 時間） | （なし） |
+
+---
+
+## デバッグコンソール
+
+CDC-ACM インターフェースがリアルタイムのデバッグコンソールを提供します。
+
+**接続:**
 ```bash
-screen /dev/ttyACM0 115200    # Linux
-screen /dev/cu.usbmodem* 115200   # macOS
-# Windows: COM port in Device Manager, PuTTY at 115200 8N1
+screen /dev/ttyACM0 115200         # Linux
+screen /dev/cu.usbmodem* 115200    # macOS
+# Windows: デバイスマネージャーで COM ポート確認、PuTTY で 115200 8N1
 ```
 
-**Boot log:**
+**起動ログ:**
 ```
 ================================================
  PicoW-NIC  USB-WiFi Bridge
@@ -172,14 +177,14 @@ Network: WiFi TX checksum wrapper installed
 Ready — connect PC to USB and/or WiFi AP "PicoBridge"
 ```
 
-**Periodic status** (every 15 seconds):
+**定期ステータス**（15 秒ごと）:
 ```
 --- Status ---
 USB  (us1): IP=10.0.0.1         link=UP
 WiFi (w10): IP=192.168.4.1      link=UP  RSSI=-45 dBm
 ```
 
-**Verbose mode** (`VERBOSE_LOG=1` in `lwipopts.h`, rebuild required):
+**詳細モード**（`lwipopts.h` の `VERBOSE_LOG=1`、リビルド必要）:
 ```
 USB RX: 98 bytes  IPv4 proto=1 dport=12345
 NAT ICMP: inp=w1 src=192.168.4.10 dst=10.0.0.2 type=8
@@ -188,86 +193,86 @@ USB TX: 98 bytes  ready=1 can_xmit=1
 
 ---
 
-## Configuration
+## 設定
 
-All user-configurable settings are in `CMakeLists.txt`:
+ユーザーが変更可能なすべての設定は `CMakeLists.txt` にあります:
 
 ```cmake
 target_compile_definitions(picow_nic PRIVATE
-    WIFI_SSID="PicoBridge"        # WiFi AP name
-    WIFI_PASSWORD="picobridge123"  # WPA2 passphrase
-    WIFI_CHANNEL=6                 # 2.4 GHz channel (1–13)
-    PICO_STDIO_USB=0               # USB stdio disabled (CDC-ACM handled by stdio_cdc.c)
+    WIFI_SSID="PicoBridge"        # WiFi AP 名
+    WIFI_PASSWORD="picobridge123"  # WPA2 パスフレーズ
+    WIFI_CHANNEL=6                 # 2.4 GHz チャンネル（1〜13）
+    PICO_STDIO_USB=0               # USB stdio 無効（CDC-ACM は stdio_cdc.c が処理）
 )
 ```
 
-IP addresses and subnet sizes are defined in source:
+IP アドレスとサブネットはソースで定義:
 
-| Symbol | File | Default |
-|--------|------|---------|
+| シンボル | ファイル | デフォルト |
+|---------|---------|----------|
 | Pico USB IP | `usb_net.c` | `10.0.0.1` |
-| USB client IP | `usb_net.c` | `10.0.0.2` |
+| USB クライアント IP | `usb_net.c` | `10.0.0.2` |
 | Pico WiFi IP | `wifi_ap.c` | `192.168.4.1` |
-| WiFi client IP | `dhcpserver.c` | `192.168.4.10` |
-| NAT table size | `nat.h` | 64 |
+| WiFi クライアント IP | `dhcpserver.c` | `192.168.4.10` |
+| NAT テーブルサイズ | `nat.h` | 64 |
 
 ---
 
-## Build
+## ビルド
 
 ```bash
-# Prerequisites (Ubuntu/Debian)
+# 前提条件（Ubuntu/Debian）
 sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
 
-# Clone and build
-git clone https://github.com/YOUR_USERNAME/PicoW-Rescue-NIC
+# クローン & ビルド
+git clone https://github.com/mar1mo-41414/PicoW-Rescue-NIC
 cd PicoW-Rescue-NIC
 mkdir build && cd build
 cmake .. -DPICO_BOARD=pico_w -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-# Output: build/picow_nic.uf2
+# 出力: build/picow_nic.uf2
 ```
 
 ---
 
-## Flash
+## フラッシュ
 
 ```bash
-# Hold BOOTSEL, plug USB, release button
-# RPI-RP2 drive appears
+# BOOTSEL を押しながら USB 接続、ボタンを離す
+# RPI-RP2 ドライブが現れる
 cp build/picow_nic.uf2 /media/$USER/RPI-RP2/
-# Pico reboots automatically and starts running firmware
+# Pico が自動的に再起動してファームウェアを開始
 ```
 
 ---
 
-## Known Limitations
+## 既知の制限事項
 
-| Limitation | Detail |
-|-----------|--------|
-| One WiFi client | Fixed IP DHCP — second device needs static IP configuration |
-| USB Full Speed | 12 Mbps physical; ~2–4 Mbps effective through NAT |
-| IPv6 only | `LWIP_IPV6=0` — IPv4 only |
-| WiFi client route | WiFi→USB direction requires manual `ip route add` on WiFi side |
-| No additional auth | WPA2 on WiFi, but the bridge itself has no extra authentication layer |
-| Pico W only | Tested on RP2040 + CYW43439 only |
-
----
-
-## Tested Environments
-
-| Role | OS / Device | Interface | Status |
-|------|-------------|-----------|--------|
-| USB host | Ubuntu 22.04 LTS | CDC-NCM (`picow`) | ✅ Verified |
-| USB host | Ubuntu 24.04 LTS | CDC-NCM | ✅ Verified |
-| USB host | Windows 10/11 | CDC-NCM | ✅ Verified |
-| WiFi client | macOS 14 Sonoma | WiFi (WPA2) | ✅ Verified |
-| WiFi client | Android (various) | WiFi (WPA2) | ✅ Verified |
+| 制限事項 | 詳細 |
+|---------|------|
+| WiFi クライアント 1 台のみ | DHCP 固定 IP — 2 台目は静的 IP 設定が必要 |
+| USB Full Speed | 物理 12 Mbps、NAT スループット 2〜4 Mbps 程度 |
+| IPv4 のみ | `LWIP_IPV6=0` |
+| WiFi クライアントのルート | WiFi→USB 方向は WiFi 側で手動 `ip route add` が必要（USB→WiFi は DHCP opt 121 で自動） |
+| 追加認証なし | WiFi は WPA2 だがブリッジ自体に追加認証層なし |
+| Pico W のみ | RP2040 + CYW43439 でのみテスト済み |
 
 ---
 
-## Version History
+## 動作確認環境
 
-| Version | Date | Notes |
-|---------|------|-------|
-| v1.0 | 2026-05-18 | First stable release. All bidirectional TCP/UDP/ICMP working. DHCP option 121. |
+| 役割 | OS / デバイス | インターフェース | 状態 |
+|------|-------------|---------------|------|
+| USB ホスト | Ubuntu 22.04 LTS | CDC-NCM (`picow`) | ✅ 確認済み |
+| USB ホスト | Ubuntu 24.04 LTS | CDC-NCM | ✅ 確認済み |
+| USB ホスト | Windows 10/11 | CDC-NCM | ✅ 確認済み |
+| WiFi クライアント | macOS 14 Sonoma | WiFi（WPA2） | ✅ 確認済み |
+| WiFi クライアント | Android（複数機種） | WiFi（WPA2） | ✅ 確認済み |
+
+---
+
+## バージョン履歴
+
+| バージョン | 日付 | 変更内容 |
+|----------|------|---------|
+| v1.0 | 2026-05-18 | 初回安定版リリース。双方向 TCP/UDP/ICMP 完全動作。DHCP オプション 121 対応。 |

@@ -1,69 +1,81 @@
-# Release Notes — v1.0
+# リリースノート — v1.0
 
-**Released:** 2026-05-18
+**リリース日:** 2026-05-18
 
-## Summary
-
-First stable release of PicoW-Rescue-NIC. All core features are working and tested.
-
-A $6 Raspberry Pi Pico W becomes a plug-and-play emergency network access device: USB Ethernet on one side, WiFi Access Point on the other, bidirectional IP routing/NAPT in between.
+英語版: [release-notes-v1.0-EN.md](release-notes-v1.0-EN.md)
 
 ---
 
-## What Works
+## 概要
 
-- ✅ **USB Ethernet (CDC-NCM)** — plug-and-play on Linux, macOS, Windows 10+; no drivers needed
-- ✅ **WiFi Access Point** — WPA2-AES, configurable SSID/password/channel
-- ✅ **Bidirectional NAPT** — ping, SSH, curl, SCP work in both directions (USB↔WiFi)
-- ✅ **DHCP option 121** — WiFi subnet route automatically installed on USB host; no `ip route add` required
-- ✅ **Debug console** — real-time firmware logs over CDC-ACM serial (same USB cable)
-- ✅ **Verbose logging** — per-packet trace mode for debugging (`VERBOSE_LOG=1`)
+PicoW-Rescue-NIC の初回安定版リリース。すべてのコア機能が動作確認済みです。
 
----
-
-## Bugs Fixed During Development
-
-Six non-trivial bugs were found and fixed before v1.0. See [`docs/investigation.md`](investigation.md) for the full story.
-
-| # | Bug | Impact |
-|---|-----|--------|
-| 1 | USB TX checksums zeroed by `ip4_forward()` | All USB-side packets dropped by Linux |
-| 2 | WiFi TX checksums zeroed by `ip4_forward()` | All WiFi-side packets dropped by Mac |
-| 3 | ICMP echo ID double byte-swap in NAT | ICMP replies had wrong ID; ping showed 100% loss |
-| 4 | TCP/UDP NAT lookup used wrong byte order | SSH/curl never worked; ICMP only worked by coincidence |
-| 5 | No WiFi subnet route on USB host | Manual `ip route add` required after every boot |
-| 6 | (investigation) Hook ordering in lwIP | Confirmed NAT hook fires before routing decision |
-
-The root cause of bugs 1–4 is a single lwIP design assumption: `ip4_forward()` zeros checksums expecting hardware offload, which neither TinyUSB CDC-NCM nor CYW43439 provide. The fix is software checksum engines in the linkoutput path for both interfaces.
+1,000 円の Raspberry Pi Pico W が、プラグアンドプレイの緊急ネットワークアクセスデバイスになります:  
+USB イーサネットを一方に、WiFi アクセスポイントをもう一方に、  
+その間で双方向 IP ルーティング/NAPT を実行します。
 
 ---
 
-## Known Limitations
+## 動作確認済み機能
 
-- **One WiFi client** — DHCP assigns a single fixed IP. A second device can join with a static IP.
-- **IPv4 only** — `LWIP_IPV6=0`
-- **USB Full Speed** — 12 Mbps physical, ~2–4 Mbps effective through NAT
-- **WiFi→USB direction** — The WiFi client needs a manual route to reach `10.0.0.x` (only USB→WiFi has automatic route distribution)
-- **Pico W only** — Tested on RP2040 + CYW43439; Pico 2 W (RP2350) is untested
-
----
-
-## Roadmap for v1.1+
-
-- [ ] Multiple WiFi clients (DHCP lease table)
-- [ ] Station mode (connect to upstream WiFi, bridge to USB)
-- [ ] Web status page (lwIP httpd)
-- [ ] DNS proxy
-- [ ] RNDIS support for older Windows
-- [ ] Pico 2 W (RP2350) port
+- ✅ **USB イーサネット（CDC-NCM）** — Linux・macOS・Windows 10+ でドライバ不要のプラグアンドプレイ
+- ✅ **WiFi アクセスポイント** — WPA2-AES、SSID・パスワード・チャンネル設定可能
+- ✅ **双方向 NAPT** — ping・SSH・curl・SCP が双方向（USB↔WiFi）で動作
+- ✅ **DHCP オプション 121** — WiFi サブネットルートを USB ホストに自動インストール（`ip route add` 不要）
+- ✅ **デバッグコンソール** — CDC-ACM シリアルでリアルタイムファームウェアログ（同じ USB ケーブル）
+- ✅ **詳細ログ** — パケット単位トレースモード（`VERBOSE_LOG=1`）
 
 ---
 
-## Repository Description
+## 開発中に修正したバグ
 
+v1.0 前に 6 つの非自明なバグを発見・修正しました。詳細は [`docs/investigation.md`](investigation.md) を参照してください。
+
+| # | バグ | 影響 |
+|---|-----|------|
+| 1 | `ip4_forward()` による USB TX チェックサムのゼロ化 | USB 側のパケットをすべて Linux がドロップ |
+| 2 | `ip4_forward()` による WiFi TX チェックサムのゼロ化 | WiFi 側のパケットをすべて Mac がドロップ |
+| 3 | NAT における ICMP echo ID のダブルバイトスワップ | ICMP reply の ID が誤り; ping が 100% ロスと表示 |
+| 4 | TCP/UDP NAT 照合のバイトオーダー誤り | SSH/curl が動作しない; ICMP は偶然のバグ相殺で動作 |
+| 5 | USB ホストに WiFi サブネットルートなし | 起動のたびに手動 `ip route add` が必要 |
+| 6 | （調査）lwIP のフック順序 | NAT フックがルーティング判断より前に呼ばれることを確認 |
+
+バグ 1〜4 の根本原因は 1 つの lwIP 設計前提です:  
+`ip4_forward()` はハードウェアオフロードを前提としてチェックサムをゼロ化しますが、  
+TinyUSB CDC-NCM も CYW43439 もそれを実装していません。  
+修正は両インターフェースの linkoutput パスにソフトウェアチェックサムエンジンを追加することです。
+
+---
+
+## 既知の制限事項
+
+- **WiFi クライアント 1 台のみ** — DHCP が固定 IP を 1 件のみ割り当て。2 台目は静的 IP 設定で接続可能
+- **IPv4 のみ** — `LWIP_IPV6=0`
+- **USB Full Speed** — 物理 12 Mbps、NAT スループット 2〜4 Mbps 程度
+- **WiFi→USB 方向のルート** — WiFi クライアントは `10.0.0.x` へのルートを手動設定が必要（USB→WiFi は自動）
+- **Pico W のみ** — RP2040 + CYW43439 でのみテスト済み。Pico 2 W（RP2350）は未テスト
+
+---
+
+## v1.1 以降のロードマップ
+
+- [ ] 複数 WiFi クライアント（DHCP リーステーブル）
+- [ ] ステーションモード（上流 WiFi に接続して USB にブリッジ）
+- [ ] Web ステータスページ（lwIP httpd）
+- [ ] DNS プロキシ
+- [ ] 古い Windows 向け RNDIS サポート
+- [ ] Pico 2 W（RP2350）移植
+
+---
+
+## GitHub リポジトリ説明文
+
+> ネットワークが壊れたサーバーへの緊急脱出口。Raspberry Pi Pico W（約1,000円）を USB ポートに挿すだけで WiFi 経由のアクセスを確保。ドライバ不要・クラウド不要。
+
+英語版:
 > Emergency USB-WiFi bridge NIC for servers. Plug a $6 Raspberry Pi Pico W into any USB port — get WiFi access to your locked-out machine, no drivers, no cloud.
 
-## Topic Tags
+## トピックタグ
 
 ```
 raspberry-pi-pico  pico-w  rp2040  tinyusb  lwip  cdc-ncm  wifi
