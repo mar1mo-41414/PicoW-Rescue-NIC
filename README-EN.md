@@ -58,6 +58,17 @@ You connect from your phone or laptop over WiFi, SSH through the bridge, and fix
 
 ---
 
+> [!WARNING]
+> **Use at your own risk!**
+>
+> There is no guarantee this will rescue your server.  
+> It may not work correctly in every situation.  
+> In the worst case, using this could make things worse.  
+> Whatever happens, I cannot take responsibility.  
+> **Test it on a non-critical machine before you actually need it.**
+
+---
+
 ## Features
 
 | Feature | Detail |
