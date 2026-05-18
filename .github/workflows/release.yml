@@ -1,0 +1,150 @@
+# release.yml — Build firmware and publish a GitHub Release on tag push
+#
+# Trigger (automatic):
+#   git tag v1.1
+#   git push origin v1.1
+#
+# Trigger (manual via GitHub UI):
+#   Actions → "Build & Release" → Run workflow → enter tag/version
+#
+# What this does:
+#   1. Install ARM toolchain
+#   2. Clone/cache Pico SDK
+#   3. cmake + make  (FW_VERSION set to the git tag)
+#   4. Rename .uf2 to  picow_nic_v1.1.uf2
+#   5. Create GitHub Release  "v1.1 — Pico Rescue Bridge"
+#   6. Attach the .uf2 to the Release
+#
+# Release body priority:
+#   docs/release-notes-{tag}.md  →  CHANGELOG.md  →  auto-generated text
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*'        # v1.0, v1.1, v2.0, ...
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string (e.g. v1.1 or v1.1-beta)'
+        required: true
+        default: 'v0.0-test'
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write   # required to create GitHub Releases
+
+    env:
+      PICO_SDK_VERSION: '2.1.0'
+      PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+
+    steps:
+      # ── Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── Determine version string ───────────────────────────────────────────
+      - name: Determine version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+
+      # ── Toolchain ──────────────────────────────────────────────────────────
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi cmake build-essential
+
+      # ── Pico SDK (cached) ──────────────────────────────────────────────────
+      - name: Cache Pico SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: pico-sdk
+          key: pico-sdk-${{ env.PICO_SDK_VERSION }}-${{ runner.os }}
+
+      - name: Checkout Pico SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+          submodules: 'recursive'
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build firmware
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          mkdir build && cd build
+          cmake .. \
+            -DPICO_BOARD=pico_w \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFW_VERSION="${VERSION}"
+          make -j$(nproc)
+
+      # ── Rename artifact ────────────────────────────────────────────────────
+      - name: Rename .uf2 with version
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          cp build/picow_nic.uf2 "picow_nic_${VERSION}.uf2"
+          echo "Artifact: picow_nic_${VERSION}.uf2"
+          ls -lh "picow_nic_${VERSION}.uf2"
+
+      # ── Save artifact (also accessible without a Release) ─────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picow_nic-${{ steps.ver.outputs.version }}
+          path: picow_nic_${{ steps.ver.outputs.version }}.uf2
+          retention-days: 90
+
+      # ── Prepare release notes ──────────────────────────────────────────────
+      - name: Prepare release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          NOTES_FILE="docs/release-notes-${VERSION}.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            echo "Found version-specific notes: $NOTES_FILE"
+            {
+              echo 'body<<__RELEASE_NOTES_EOF__'
+              cat "$NOTES_FILE"
+              echo '__RELEASE_NOTES_EOF__'
+            } >> $GITHUB_OUTPUT
+
+          elif [ -f "CHANGELOG.md" ]; then
+            echo "Using CHANGELOG.md"
+            {
+              echo 'body<<__RELEASE_NOTES_EOF__'
+              cat "CHANGELOG.md"
+              echo '__RELEASE_NOTES_EOF__'
+            } >> $GITHUB_OUTPUT
+
+          else
+            echo "body=Firmware release ${VERSION} — see README for details." \
+              >> $GITHUB_OUTPUT
+          fi
+
+      # ── Create GitHub Release ──────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: "${{ steps.ver.outputs.version }} — Pico Rescue Bridge"
+          body: ${{ steps.notes.outputs.body }}
+          files: picow_nic_${{ steps.ver.outputs.version }}.uf2
+          draft: false
+          # Tags containing '-' (e.g. v1.1-beta, v2.0-rc1) become pre-releases automatically
+          prerelease: ${{ contains(steps.ver.outputs.version, '-') }}

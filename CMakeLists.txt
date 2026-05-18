@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.13)
 
+# ---------------------------------------------------------------------------
+# Firmware version — override from command line to match a git tag:
+#   cmake .. -DFW_VERSION="v1.1"
+# CI (release.yml) passes -DFW_VERSION="${GITHUB_REF_NAME}" automatically.
+# ---------------------------------------------------------------------------
+if(NOT DEFINED FW_VERSION)
+    set(FW_VERSION "v1.0")
+endif()
+
 # PICO_BOARD must be set BEFORE include(pico_sdk_import.cmake) so that the
 # toolchain file picks up the correct board (pico_w has CYW43 / WiFi).
 if(NOT DEFINED PICO_BOARD)
@@ -14,6 +23,21 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
+
+# ---------------------------------------------------------------------------
+# Git hash — short commit hash for build identification
+# Falls back to "unknown" when building outside a git repository.
+# ---------------------------------------------------------------------------
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_HASH)
+    set(GIT_HASH "unknown")
+endif()
 
 add_executable(picow_nic
     src/main.c
@@ -36,6 +60,8 @@ target_compile_definitions(picow_nic PRIVATE
     WIFI_PASSWORD="picobridge123"
     WIFI_CHANNEL=6
     PICO_STDIO_USB=0
+    FW_VERSION="${FW_VERSION}"
+    GIT_HASH="${GIT_HASH}"
 )
 
 # ip4_napt.c is absent from the pico-sdk lwIP snapshot (added post-2.1.x).
@@ -63,6 +89,8 @@ pico_enable_stdio_uart(picow_nic 1)
 pico_add_extra_outputs(picow_nic)
 
 message(STATUS "PicoW-NIC configured")
+message(STATUS "  Version:       ${FW_VERSION}")
+message(STATUS "  Git hash:      ${GIT_HASH}")
 message(STATUS "  WiFi SSID:     PicoBridge")
 message(STATUS "  USB subnet:    10.0.0.0/24")
 message(STATUS "  WiFi subnet:   192.168.4.0/24")

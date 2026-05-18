@@ -5,7 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20Pico%20W-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
 [![SDK](https://img.shields.io/badge/Pico%20SDK-2.x-blue)](https://github.com/raspberrypi/pico-sdk)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#build)
+[![CI Build](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/actions/workflows/build.yml/badge.svg)](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/mar1mo-41414/PicoW-Rescue-NIC)](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/releases/latest)
 
 ---
 
@@ -163,6 +164,19 @@ Phone — SSH session established ✓
 ---
 
 ## Build
+
+### Download a pre-built firmware (easiest)
+
+No toolchain needed — grab the latest `.uf2` directly from [**GitHub Releases**](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/releases/latest).
+
+```
+1. Open the Releases page
+2. Under the latest release "Assets", download picow_nic_vX.X.uf2
+3. Hold BOOTSEL on the Pico W while plugging USB
+4. Copy the file to the RPI-RP2 drive that appears — done
+```
+
+To build from source, follow the steps below.
 
 ### Prerequisites
 

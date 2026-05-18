@@ -24,6 +24,7 @@
 #include "wifi_ap.h"
 #include "usb_net.h"
 #include "network.h"
+#include "version.h"
 
 void stdio_cdc_init(void);   // src/stdio_cdc.c
 
@@ -57,7 +58,11 @@ int main(void) {
     }
 
     printf("\n================================================\n");
-    printf(" PicoW-NIC  USB-WiFi Bridge\n");
+    printf(" Pico Rescue Bridge " FW_VERSION "\n");
+    printf(" RP2040 USB Rescue NIC\n");
+    printf("================================================\n");
+    printf(" Build: " __DATE__ " " __TIME__ "\n");
+    printf(" Git:   " GIT_HASH "\n");
     printf(" USB subnet : 10.0.0.0/24\n");
     printf(" WiFi subnet: 192.168.4.0/24  SSID=" WIFI_SSID "\n");
     printf("================================================\n\n");

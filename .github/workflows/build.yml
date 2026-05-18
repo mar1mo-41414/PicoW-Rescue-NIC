@@ -1,0 +1,67 @@
+# build.yml — CI build: runs on every push/PR to main
+#
+# Purpose: Verify the firmware compiles cleanly on each commit.
+# Uploads the .uf2 as a temporary artifact (7-day retention).
+#
+# For release builds (tag push), see release.yml.
+
+name: CI Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      PICO_SDK_VERSION: '2.1.0'
+      PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── Toolchain ─────────────────────────────────────────────────────────
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi cmake build-essential
+
+      # ── Pico SDK (cached) ──────────────────────────────────────────────────
+      - name: Cache Pico SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: pico-sdk
+          key: pico-sdk-${{ env.PICO_SDK_VERSION }}-${{ runner.os }}
+
+      - name: Checkout Pico SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+          submodules: 'recursive'
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build firmware
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DPICO_BOARD=pico_w \
+            -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+
+      # ── Artifact ───────────────────────────────────────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picow_nic-dev-${{ github.sha }}
+          path: build/picow_nic.uf2
+          retention-days: 7

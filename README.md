@@ -5,7 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20Pico%20W-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
 [![SDK](https://img.shields.io/badge/Pico%20SDK-2.x-blue)](https://github.com/raspberrypi/pico-sdk)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#ビルド)
+[![CI Build](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/actions/workflows/build.yml/badge.svg)](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/mar1mo-41414/PicoW-Rescue-NIC)](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/releases/latest)
 
 [English version → README-EN.md](README-EN.md)
 
@@ -163,6 +164,19 @@ Pico W USB — 受信、NAT テーブル検索
 ---
 
 ## ビルド
+
+### ビルド済みファームウェアをダウンロード（初心者向け・推奨）
+
+ビルド環境を用意しなくても、[**GitHub Releases**](https://github.com/mar1mo-41414/PicoW-Rescue-NIC/releases/latest) から最新の `.uf2` ファイルを直接ダウンロードできます。
+
+```
+1. Releases ページを開く
+2. 最新リリースの「Assets」から picow_nic_vX.X.uf2 をダウンロード
+3. Pico W を BOOTSEL モードにして（ボタンを押しながら USB 接続）
+4. 現れた RPI-RP2 ドライブにファイルをコピー → 完了
+```
+
+ソースコードからビルドする場合は以下を参照してください。
 
 ### 前提条件
 
