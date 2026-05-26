@@ -485,10 +485,19 @@ MIT — see [LICENSE](LICENSE)
 <details>
 <summary>📷 Photos / Demo (click to expand)</summary>
 
-<!-- Add photos here -->
-> *Photo: Pico W plugged into a server's USB port, WiFi connected from phone*
+> *Photo: Pico W, and the server with `ip route` before the Pico W was connected*
+[`images/1.png`](images/1.png) 
 
-<!-- Add GIF here -->
-> *GIF: SSH session established through Pico W bridge*
+> *Photo: `ip route` on the server after connecting the Pico W (a route has been added)*
+[`images/2.png`](images/2.png) 
+
+> *Photo: Wi-Fi settings on an iPhone connected to the Pico W AP*
+[`images/3.png`](images/3.png) 
+
+> *Photo: SSH session connected through the Pico W (showing neofetch and a ping from the PC to the iPhone)*
+[`images/4.png`](images/4.png) 
+
+> *Photo: Pinging the iPhone through the Pico W*
+[`images/1.png`](images/1.png) 
 
 </details>

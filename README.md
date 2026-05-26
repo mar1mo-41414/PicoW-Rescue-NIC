@@ -472,11 +472,19 @@ MIT — [LICENSE](LICENSE) を参照
 
 <details>
 <summary>📷 写真・デモ（クリックして展開）</summary>
+> *写真: Pico Wと、Pico Wを刺す前のサーバーとip route *
+[`images/1.png`](images/1.png) 
 
-<!-- 写真をここに追加 -->
-> *写真: サーバーの USB ポートに挿さった Pico W、スマホから WiFi 接続中*
+> *写真: Pico Wを刺したサーバーのip route (ルートが追加されている)*
+[`images/2.png`](images/2.png) 
 
-<!-- GIF をここに追加 -->
-> *GIF: Pico W ブリッジ越しに確立した SSH セッション*
+> *写真: Pico WのAPに接続したiPhoneのWiFi設定 *
+[`images/3.png`](images/3.png) 
+
+> *写真: Pico W経由で接続したSSHセッション (neofetchと、PCからiPhoneへのpingを実行) *
+[`images/4.png`](images/4.png) 
+
+> *写真: Pico W経由でiPhoneへping*
+[`images/5.png`](images/5.png) 
 
 </details>
