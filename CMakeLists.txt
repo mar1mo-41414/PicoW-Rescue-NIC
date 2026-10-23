@@ -15,6 +15,18 @@ if(NOT DEFINED PICO_BOARD)
     set(PICO_BOARD pico_w CACHE STRING "Board type")
 endif()
 
+# ---------------------------------------------------------------------------
+# WiFi credentials — override at configure time WITHOUT editing this file:
+#   cmake .. -DWIFI_SSID="MyRescue" -DWIFI_PASSWORD="long-passphrase" -DWIFI_CHANNEL=11
+# or just use the wrapper:  ./scripts/build.sh --ssid MyRescue --pass 'long-passphrase'
+#
+# CHANGE THE DEFAULT PASSWORD. "picobridge123" is a published value in this
+# repository, not a secret — anyone who read the README knows it.
+# ---------------------------------------------------------------------------
+set(WIFI_SSID     "PicoBridge"    CACHE STRING "WiFi AP SSID")
+set(WIFI_PASSWORD "picobridge123" CACHE STRING "WiFi AP WPA2 passphrase (8-63 chars) — CHANGE THIS")
+set(WIFI_CHANNEL  "6"             CACHE STRING "2.4GHz WiFi channel (1-13)")
+
 # Pull in Pico SDK (must be before project())
 include(pico_sdk_import.cmake)
 
@@ -48,6 +60,7 @@ add_executable(picow_nic
     src/network.c
     src/dhcpserver.c
     src/nat.c          # self-contained NAPT (ip4_napt.c not in this SDK)
+    src/status_led.c   # onboard LED status/blink-code indicator
 )
 
 target_include_directories(picow_nic PRIVATE
@@ -56,13 +69,21 @@ target_include_directories(picow_nic PRIVATE
 )
 
 target_compile_definitions(picow_nic PRIVATE
-    WIFI_SSID="PicoBridge"
-    WIFI_PASSWORD="picobridge123"
-    WIFI_CHANNEL=6
+    WIFI_SSID="${WIFI_SSID}"
+    WIFI_PASSWORD="${WIFI_PASSWORD}"
+    WIFI_CHANNEL=${WIFI_CHANNEL}
     PICO_STDIO_USB=0
     FW_VERSION="${FW_VERSION}"
     GIT_HASH="${GIT_HASH}"
 )
+
+# Warn loudly at configure time if the published default password is still set.
+if(WIFI_PASSWORD STREQUAL "picobridge123")
+    message(WARNING
+        "WIFI_PASSWORD is still the published default 'picobridge123'. "
+        "Rebuild with -DWIFI_PASSWORD=\"your-own-passphrase\" "
+        "(or ./scripts/build.sh --pass ...) before real use.")
+endif()
 
 # ip4_napt.c is absent from the pico-sdk lwIP snapshot (added post-2.1.x).
 # We ship our own minimal NAPT in src/nat.c.
@@ -91,6 +112,7 @@ pico_add_extra_outputs(picow_nic)
 message(STATUS "PicoW-NIC configured")
 message(STATUS "  Version:       ${FW_VERSION}")
 message(STATUS "  Git hash:      ${GIT_HASH}")
-message(STATUS "  WiFi SSID:     PicoBridge")
+message(STATUS "  WiFi SSID:     ${WIFI_SSID}")
+message(STATUS "  WiFi channel:  ${WIFI_CHANNEL}")
 message(STATUS "  USB subnet:    10.0.0.0/24")
 message(STATUS "  WiFi subnet:   192.168.4.0/24")

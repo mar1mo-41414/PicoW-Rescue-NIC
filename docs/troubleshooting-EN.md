@@ -12,6 +12,39 @@
 
 If step 1–4 pass but step 5 fails, the issue is in NAT or routing. Enable verbose logging to diagnose.
 
+**The fastest first check is the onboard LED** → [LED status codes](#led-status-codes)
+
+---
+
+## LED status codes
+
+The Pico W has **only one single-colour LED**, so state is shown via **blink patterns**. Like the Raspberry Pi 4 PWR LED, it encodes an error code with **long flashes (~0.6 s)** and **short flashes (~0.15 s)**.
+
+| LED behaviour | State | Meaning / fix |
+|---------------|-------|---------------|
+| Near-solid (winks off briefly once every ~2 s) | ✅ Fully operational | USB host up + a WiFi client connected. Ready to work. The brief wink is a "firmware alive" heartbeat |
+| Even 1 Hz blink | Up, waiting | Firmware fine, USB host recognised, but **no WiFi client yet**. Join the SSID → goes to fully operational |
+| **1 long + 2 short** (repeating) | ⚠️ Code 2: USB host not seen | The server isn't enumerating the NIC. → ① re-plug USB ② confirm a data-capable cable ③ try another USB port ④ check the server OS supports CDC-NCM ([table](../README-EN.md#verified-environments-support-table)) |
+| **1 long + 3 short** (repeating) | ⚠️ Code 3: WiFi AP not up | The access point didn't come up. Likely a firmware fault. → re-flash; open an issue if it recurs |
+| Completely dark (**powered** but no light for >1 s) | ❌ Fatal: WiFi chip init failed | The LED lives on the WiFi chip (CYW43); if the chip is dead it can't even blink a code. → re-flash; suspect a bad unit if that fails |
+| Completely dark (no light at all) | No power | Server off / USB not powering / bad cable. Or the first ~1 s of boot. → check power and cable |
+
+### Reading the codes
+
+Long and short flashes repeat with a ~1.3 s dark gap between repetitions.
+
+```
+Code 2 (USB host not seen):
+ ━━━━  ・ ・        ━━━━  ・ ・        ...
+ long  short short (gap) long  short short (gap)
+
+Code 3 (WiFi AP not up):
+ ━━━━  ・ ・ ・      ━━━━  ・ ・ ・      ...
+ long  short×3 (gap) long  short×3 (gap)
+```
+
+**Healthy patterns (solid / 1 Hz blink) look clearly different from error patterns (long+short codes)**, so first bucket it as "roughly steady / regular blink / mixed long-short code". The same state is also printed as text in the boot log on the debug console.
+
 ---
 
 ## Problem: Pico Not Appearing as a USB Network Interface
@@ -22,7 +55,7 @@ If step 1–4 pass but step 5 fails, the issue is in NAT or routing. Enable verb
 ### Possible Causes & Fixes
 
 **The Pico is not running the firmware**
-- Check: LED should be solid on (WiFi AP active). If LED is off or blinking, the firmware may not be flashed.
+- Check: look at the onboard LED pattern ([LED status codes](#led-status-codes)). Healthy is "near-solid" or "1 Hz blink". **A 1-long + 2-short pattern (code 2) is exactly this symptom** — the server isn't seeing the NIC. Completely dark means no power or no firmware.
 - Fix: Re-flash. Hold BOOTSEL, plug USB, copy `.uf2` to the RPI-RP2 drive.
 
 **CDC-NCM not supported by OS**
