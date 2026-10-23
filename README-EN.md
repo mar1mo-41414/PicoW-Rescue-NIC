@@ -18,9 +18,11 @@ This is a **one-off, personal, hobby-built emergency recovery tool.** It is **no
 
 It targets exactly one situation:
 
-> **You locked yourself out of a server with a bad network-config change. You have no physical console on hand. But the machine itself is still alive.**
+> **You're setting up / reconfiguring a headless machine right in front of you, you botch the network config mid-work, and you lock yourself out. No monitor or keyboard is attached. But the machine itself is still alive.**
 
-You plug a Pico W in and, **without touching the server at all**, grow "one more path in" (an extra NIC) that restores *the road to a door you can log in through*. That is the whole job. If you get just enough reachability back to SSH in, fix the config, and return to your normal management setup — done.
+**Key premise: you are standing right in front of the machine** (in the server room, at the rack, on your desk…). This is **not a remote-access tool, and not a way to avoid an on-site trip.** It's a tool to **re-create an entrance, on the spot, into a machine that's right there but won't let you in.** Instead of digging out a monitor and keyboard (or a crash cart), you plug in the Pico W, join its WiFi from the phone/laptop in your hand, and SSH in. That's it.
+
+Plug the Pico W in and, **without touching the server at all**, "one more path in" (an extra NIC) appears, restoring *the road to a door you can log in through*. If you get just enough reachability back to SSH in, fix the config, and return to your normal management setup — done.
 
 **The most important point:**
 
@@ -35,10 +37,12 @@ It is **not** meant to be left plugged in permanently. Keep it in a drawer; **pl
 
 ## The Problem
 
-You've been there.
+You've been there. You're setting up a **headless machine right in front of you**:
 
 ```
-[You, at home] ──── Internet ──✗── [Your server, somewhere far away]
+[You + laptop/phone]   [the server in front of you]
+        ✗ ── can't get on the network ── ┘
+        (but the machine is fine)
 ```
 
 You forgot to undo `ip link set eth0 down`.
@@ -49,7 +53,8 @@ You fat-fingered a routing table entry.
 
 **The machine is alive. The disk is fine. The OS is running. sshd is listening. But you cannot reach it over the network.**
 
-You need physical access — or you need to call someone.
+The machine is right there — but no monitor or keyboard is attached.
+Go find a crash cart, or call someone.
 
 ---
 
@@ -58,7 +63,7 @@ You need physical access — or you need to call someone.
 Plug a **~$6 Raspberry Pi Pico W** into any spare USB port on the server.
 
 ```
-[You, at home]
+[Your phone / laptop, right there]
       │
       ▼ WiFi (192.168.4.0/24)
  ┌────────────┐
@@ -159,7 +164,7 @@ A Pico W flashed with this firmware **creates a network path into the machine th
 3. **Don't leave it plugged in in untrusted locations.** Anyone in WiFi range can try to associate.
 4. **Verify the server afterwards** — check for leftover interfaces/settings and unexpected logins.
 
-**Threat model:** this is a tool for someone who **already has physical access** to the server to save a trip on-site. It is not a tool for someone *without* physical access to get in remotely (it assumes you can plug in USB; it does not break physical security).
+**Threat model:** this is a tool for **someone standing right at the machine** who locked themselves out mid-config, to re-create an entrance on the spot. It is not a tool for getting in from somewhere else (being able to plug in USB = being physically in front of it is the whole premise; it does not break physical security).
 
 **Logging:** connection history is **not recorded by default.** If you want to know what happened during a recovery, capture the CDC-ACM serial log on the host while you work (`sudo cat /dev/ttyACM0 | tee rescue-$(date +%F).log`).
 
@@ -182,20 +187,19 @@ A Pico W flashed with this firmware **creates a network path into the machine th
 
 ## Use Cases
 
-All of these are variants of the same job: **emergency recovery from a network-config lockout.**
+All of these are variants of the same job: **on-the-spot recovery after you lock yourself out of a machine that's in front of you** (not remote access — see "Read this first" at the top).
 
 ### 🏠 Homelab & Self-hosted
 
-- Locked out after misconfiguring `iptables` / `nftables` / routing (within the [recoverable set](#failure-modes-what-it-can-and-cannot-rescue))
-- Keep one **on hand as a recovery option** before testing network changes
-- Temporary remote access to a machine with no WiFi card
+- You were configuring a headless server / mini-PC and locked yourself out via `iptables` / `nftables` / routing (within the [recoverable set](#failure-modes-what-it-can-and-cannot-rescue))
+- A **stand-in emergency console** for a box with no monitor/keyboard attached — a phone is enough to get in
 
-### 🏢 Datacenter / Colocation
+### 🏢 Server room / Rack
 
-- Emergency access before an on-site trip when the management network is down
-- A cheap secondary OOB (Out-of-Band) path where IPMI/iDRAC is absent or unusable
+- Locked out mid-config on a headless server in the rack → **re-create an entrance on the spot**, right at the machine
+- A pocket-sized alternative when no crash cart (monitor + keyboard trolley) or KVM is available
 
-> Note: this is **not** a "permanently installed break-glass" device. The intended flow is plug in during an incident, unplug once recovered.
+> Note: this is **not** a remote OOB path and **not** a "permanently installed break-glass" device. It assumes **you're standing at the machine**; plug in during an incident, unplug once recovered.
 
 ---
 

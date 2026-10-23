@@ -58,10 +58,16 @@ static const led_step_t pat_wifi_down[] = {
     { true, T_SHORT_ON }, { false, T_CODE_GAP },
 };
 
-#define PAT(arr) (arr), (sizeof(arr) / sizeof((arr)[0]))
+// Set BOTH the pattern pointer and its length together. (A comma-expression
+// macro used in a plain assignment would only set the pointer and discard the
+// length, leaving cur_len stale — so use a statement macro.)
+#define SET_PATTERN(arr) do {                      \
+        cur_pat = (arr);                           \
+        cur_len = sizeof(arr) / sizeof((arr)[0]);  \
+    } while (0)
 
 static const led_step_t *cur_pat = pat_boot;
-static uint32_t          cur_len = 1;
+static uint32_t          cur_len = 1;              // pat_boot has 1 step
 static led_state_t       cur_state = LED_STATE_BOOT;
 static uint32_t          step_idx = 0;
 static uint32_t          step_until_ms = 0;   // 0 → apply current step now
@@ -69,12 +75,12 @@ static bool              inited = false;
 
 static void load_pattern(led_state_t state) {
     switch (state) {
-        case LED_STATE_ACTIVE:      cur_pat = PAT(pat_active);      break;
-        case LED_STATE_CLIENT_WAIT: cur_pat = PAT(pat_client_wait); break;
-        case LED_STATE_USB_WAIT:    cur_pat = PAT(pat_usb_wait);    break;
-        case LED_STATE_WIFI_DOWN:   cur_pat = PAT(pat_wifi_down);   break;
+        case LED_STATE_ACTIVE:      SET_PATTERN(pat_active);      break;
+        case LED_STATE_CLIENT_WAIT: SET_PATTERN(pat_client_wait); break;
+        case LED_STATE_USB_WAIT:    SET_PATTERN(pat_usb_wait);    break;
+        case LED_STATE_WIFI_DOWN:   SET_PATTERN(pat_wifi_down);   break;
         case LED_STATE_BOOT:
-        default:                    cur_pat = PAT(pat_boot);        break;
+        default:                    SET_PATTERN(pat_boot);        break;
     }
     step_idx = 0;
     step_until_ms = 0;   // force status_led_task() to apply step 0 immediately
