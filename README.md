@@ -300,13 +300,26 @@ Pico W USB — 受信、NAT テーブル検索
 ### 前提条件
 
 ```bash
-# ARM ツールチェーン インストール (Ubuntu/Debian)
-sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+# --- Linux (Ubuntu/Debian) ---
+sudo apt install cmake build-essential git \
+  gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+  libusb-1.0-0-dev pkg-config     # ← libusb / pkg-config は picotool のビルドに必要
 
-# Pico SDK のクローン
+# --- macOS (Homebrew) ---
+brew install cmake arm-none-eabi-gcc libusb pkg-config   # ← libusb は picotool に必要
+
+# Pico SDK のクローン（tinyusb / lwip / cyw43 を取るため --recurse-submodules 必須）
 git clone https://github.com/raspberrypi/pico-sdk --recurse-submodules
 export PICO_SDK_PATH=/path/to/pico-sdk
 ```
+
+> **picotool について（よくハマる）:** Pico SDK 2.x は UF2 生成に [picotool](https://github.com/raspberrypi/picotool) が必要です。
+> 通常はビルド時に SDK が自動で取得・ビルドします（**初回はネット接続が必要**）。
+> このとき `libusb` / `pkg-config` が無いと picotool のビルドに失敗する（または USB サポート無しの
+> 制限版になり落ちる）ので、**上の依存を先に入れておくこと。**
+> それでも「picotool が見つからない／取得できない」と言われる場合は、別途 picotool を
+> ビルドして `cmake .. -Dpicotool_DIR=/path/to/picotool/installed/lib/cmake/picotool` のように
+> 明示するか、環境変数 `PICOTOOL_FETCH_FROM_GIT_PATH=<書き込み可能なディレクトリ>` を指定してください。
 
 ### 一発ビルド（推奨）— ファイル編集なしで設定変更
 

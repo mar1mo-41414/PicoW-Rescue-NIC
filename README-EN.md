@@ -299,13 +299,26 @@ No toolchain needed — grab the latest `.uf2` directly from [**GitHub Releases*
 ### Prerequisites
 
 ```bash
-# Install ARM toolchain (Ubuntu/Debian)
-sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+# --- Linux (Ubuntu/Debian) ---
+sudo apt install cmake build-essential git \
+  gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+  libusb-1.0-0-dev pkg-config     # ← libusb / pkg-config are needed to build picotool
 
-# Clone Pico SDK
+# --- macOS (Homebrew) ---
+brew install cmake arm-none-eabi-gcc libusb pkg-config   # ← libusb is needed for picotool
+
+# Clone Pico SDK (--recurse-submodules is required for tinyusb / lwip / cyw43)
 git clone https://github.com/raspberrypi/pico-sdk --recurse-submodules
 export PICO_SDK_PATH=/path/to/pico-sdk
 ```
+
+> **About picotool (a common gotcha):** Pico SDK 2.x needs [picotool](https://github.com/raspberrypi/picotool) to generate the UF2.
+> The SDK normally fetches and builds it automatically at build time (**the first build needs internet**).
+> If `libusb` / `pkg-config` are missing, that picotool build fails (or falls back to a USB-less build that errors out),
+> so **install the dependencies above first.**
+> If it still says "picotool not found / can't fetch", either build picotool separately and point CMake at it with
+> `cmake .. -Dpicotool_DIR=/path/to/picotool/installed/lib/cmake/picotool`, or set
+> `PICOTOOL_FETCH_FROM_GIT_PATH=<a writable directory>`.
 
 ### One-command build (recommended) — change settings without editing files
 
