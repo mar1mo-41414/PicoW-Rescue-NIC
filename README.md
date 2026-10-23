@@ -317,9 +317,25 @@ export PICO_SDK_PATH=/path/to/pico-sdk
 > 通常はビルド時に SDK が自動で取得・ビルドします（**初回はネット接続が必要**）。
 > このとき `libusb` / `pkg-config` が無いと picotool のビルドに失敗する（または USB サポート無しの
 > 制限版になり落ちる）ので、**上の依存を先に入れておくこと。**
-> それでも「picotool が見つからない／取得できない」と言われる場合は、別途 picotool を
-> ビルドして `cmake .. -Dpicotool_DIR=/path/to/picotool/installed/lib/cmake/picotool` のように
-> 明示するか、環境変数 `PICOTOOL_FETCH_FROM_GIT_PATH=<書き込み可能なディレクトリ>` を指定してください。
+> **「Incompatible picotool ... Requires version 2.3.0, you have version unknown」**のように、
+> 既にインストール済みの picotool がバージョン不一致で弾かれる場合は、SDK に正しい版を
+> 取得・ビルドさせるのが手っ取り早い:
+>
+> ```bash
+> ./scripts/build.sh --fetch-picotool --ssid "..." --pass "..."
+> # （中身は cmake に -DPICOTOOL_FORCE_FETCH_FROM_GIT=ON を渡しているだけ）
+> ```
+>
+> 恒久的に直すなら、インストール済み picotool を SDK が要求する版に合わせて入れ直す:
+>
+> ```bash
+> cd /path/to/picotool
+> git fetch --tags && git checkout 2.3.0   # SDK が要求する版に合わせる
+> rm -rf build && cmake -S . -B build && cmake --build build && sudo cmake --install build
+> ```
+>
+> それでも「picotool が見つからない／取得できない」と言われる場合は、`cmake .. -Dpicotool_DIR=...`
+> で明示するか、`PICOTOOL_FETCH_FROM_GIT_PATH=<書き込み可能なディレクトリ>` を指定してください。
 
 ### 一発ビルド（推奨）— ファイル編集なしで設定変更
 

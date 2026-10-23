@@ -19,6 +19,10 @@
 #   --board    <board>   Pico board             (default: pico_w)
 #   --build-dir <dir>    Build directory        (default: build)
 #   --clean              Remove the build dir before configuring
+#   --fetch-picotool     Make the SDK download & build the exact picotool it
+#                        needs (PICOTOOL_FORCE_FETCH_FROM_GIT=ON). Use this if
+#                        configure fails with "Incompatible picotool ... version
+#                        unknown" because a mismatched picotool is installed.
 #   -h, --help           Show this help
 #
 # Requirements:
@@ -38,13 +42,14 @@ info()  { echo -e "${GREEN}[build]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[build]${NC} $*"; }
 error() { echo -e "${RED}[build] ERROR:${NC} $*" >&2; }
 
-usage() { sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ── Defaults (empty = let CMakeLists.txt supply its own default) ─────────────
 SSID=""; PASS=""; CHANNEL=""; FW_VERSION=""
 BOARD="pico_w"
 BUILD_DIR="${REPO_ROOT}/build"
 CLEAN=0
+FETCH_PICOTOOL=0
 
 # ── Parse args ───────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -56,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --board)     BOARD="${2:?--board needs a value}"; shift 2 ;;
         --build-dir) BUILD_DIR="${2:?--build-dir needs a value}"; shift 2 ;;
         --clean)     CLEAN=1; shift ;;
+        --fetch-picotool) FETCH_PICOTOOL=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         *) error "Unknown option: $1"; echo; usage; exit 1 ;;
     esac
@@ -108,6 +114,7 @@ CMAKE_ARGS=(
 [[ -n "${PASS}"       ]] && CMAKE_ARGS+=( -DWIFI_PASSWORD="${PASS}" )
 [[ -n "${CHANNEL}"    ]] && CMAKE_ARGS+=( -DWIFI_CHANNEL="${CHANNEL}" )
 [[ -n "${FW_VERSION}" ]] && CMAKE_ARGS+=( -DFW_VERSION="${FW_VERSION}" )
+(( FETCH_PICOTOOL )) && CMAKE_ARGS+=( -DPICOTOOL_FORCE_FETCH_FROM_GIT=ON )
 
 info "SSID:     ${SSID:-<default: PicoBridge>}"
 if [[ -n "${PASS}" ]]; then

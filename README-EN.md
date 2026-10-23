@@ -316,9 +316,25 @@ export PICO_SDK_PATH=/path/to/pico-sdk
 > The SDK normally fetches and builds it automatically at build time (**the first build needs internet**).
 > If `libusb` / `pkg-config` are missing, that picotool build fails (or falls back to a USB-less build that errors out),
 > so **install the dependencies above first.**
-> If it still says "picotool not found / can't fetch", either build picotool separately and point CMake at it with
-> `cmake .. -Dpicotool_DIR=/path/to/picotool/installed/lib/cmake/picotool`, or set
-> `PICOTOOL_FETCH_FROM_GIT_PATH=<a writable directory>`.
+> If an **already-installed** picotool is rejected for a version mismatch
+> (**"Incompatible picotool ... Requires version 2.3.0, you have version unknown"**),
+> the quickest fix is to let the SDK fetch & build the exact version it wants:
+>
+> ```bash
+> ./scripts/build.sh --fetch-picotool --ssid "..." --pass "..."
+> # (this just passes -DPICOTOOL_FORCE_FETCH_FROM_GIT=ON to cmake)
+> ```
+>
+> To fix it permanently, reinstall the local picotool at the version the SDK requires:
+>
+> ```bash
+> cd /path/to/picotool
+> git fetch --tags && git checkout 2.3.0   # match the version the SDK asks for
+> rm -rf build && cmake -S . -B build && cmake --build build && sudo cmake --install build
+> ```
+>
+> If it still says "picotool not found / can't fetch", either point CMake at a build with
+> `cmake .. -Dpicotool_DIR=...`, or set `PICOTOOL_FETCH_FROM_GIT_PATH=<a writable directory>`.
 
 ### One-command build (recommended) — change settings without editing files
 
